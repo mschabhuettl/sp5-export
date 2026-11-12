@@ -1,0 +1,305 @@
+{
+  "format": "dispofold/dataset",
+  "version": 2,
+  "source": "synthetic",
+  "areas": [
+    {
+      "id": "AN",
+      "name": "Notrufannahme",
+      "color": "#0F766E"
+    },
+    {
+      "id": "TV",
+      "name": "Transportvermittlung",
+      "color": "#2563EB"
+    }
+  ],
+  "shifts": [
+    {
+      "id": "AN-F",
+      "areaId": "AN",
+      "code": "A1",
+      "name": "Annahme früh",
+      "start": "06:30",
+      "end": "14:30",
+      "category": "EARLY",
+      "color": "#F6E3D3",
+      "unpopular": false
+    },
+    {
+      "id": "TV-N",
+      "areaId": "TV",
+      "code": "T3",
+      "name": "Vermittlung Nacht",
+      "start": "19:00",
+      "end": "07:00",
+      "category": "NIGHT",
+      "color": "#D3DCF6",
+      "unpopular": true
+    }
+  ],
+  "demand": [
+    {
+      "areaId": "AN",
+      "days": [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+        "SUN"
+      ],
+      "date": null,
+      "from": "06:30",
+      "to": "14:30",
+      "min": 1,
+      "max": 2
+    },
+    {
+      "areaId": "TV",
+      "days": [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+        "SUN",
+        "HOL"
+      ],
+      "date": null,
+      "from": "19:00",
+      "to": "07:00",
+      "min": 1,
+      "max": null
+    },
+    {
+      "areaId": "AN",
+      "days": null,
+      "date": "2027-01-01",
+      "from": "06:30",
+      "to": "14:30",
+      "min": 2,
+      "max": null
+    }
+  ],
+  "holidays": [
+    {
+      "date": "2027-01-01",
+      "name": "Neujahr"
+    },
+    {
+      "date": "2027-01-06",
+      "name": "Heilige Drei Könige"
+    }
+  ],
+  "absenceTypes": [
+    {
+      "code": "U",
+      "name": "Urlaub",
+      "reducesTarget": true,
+      "chargesAccount": false,
+      "compensatoryRest": false,
+      "color": "#A3C585"
+    },
+    {
+      "code": "ZA",
+      "name": "Zeitausgleich",
+      "reducesTarget": true,
+      "chargesAccount": true,
+      "compensatoryRest": false,
+      "color": "#C9B8E8"
+    },
+    {
+      "code": "K",
+      "name": "Krankenstand",
+      "reducesTarget": true,
+      "chargesAccount": false,
+      "compensatoryRest": false,
+      "color": "#E8B8B8"
+    },
+    {
+      "code": "ER",
+      "name": "Ersatzruhe",
+      "reducesTarget": true,
+      "chargesAccount": false,
+      "compensatoryRest": true,
+      "color": "#8FD3C7"
+    }
+  ],
+  "people": [
+    {
+      "id": "P0001",
+      "firstName": "Erika",
+      "lastName": "Muster",
+      "shortName": "EMU",
+      "weeklyHours": 40.0,
+      "areaIds": [
+        "AN",
+        "TV"
+      ],
+      "hoursAccount": 6.5,
+      "compRestBalance": 2,
+      "familyRules": [
+        {
+          "weekdays": [
+            2,
+            4
+          ],
+          "latestEnd": "18:00",
+          "earliestStart": null,
+          "noNights": true,
+          "note": "Betreuung"
+        }
+      ],
+      "externalId": "17",
+      "entryDate": null,
+      "exitDate": null
+    },
+    {
+      "id": "P0002",
+      "firstName": "Max",
+      "lastName": "Probe",
+      "shortName": "MPR",
+      "weeklyHours": 38.5,
+      "areaIds": [
+        "TV"
+      ],
+      "hoursAccount": -3.0,
+      "compRestBalance": 0,
+      "familyRules": [],
+      "externalId": "18",
+      "entryDate": null,
+      "exitDate": null
+    },
+    {
+      "id": "P0003",
+      "firstName": "Lea",
+      "lastName": "Test",
+      "shortName": "LTE",
+      "weeklyHours": 40.0,
+      "areaIds": [
+        "AN"
+      ],
+      "hoursAccount": 0.0,
+      "compRestBalance": 0,
+      "familyRules": [],
+      "externalId": null,
+      "entryDate": null,
+      "exitDate": null
+    }
+  ],
+  "restrictions": [
+    {
+      "personId": "P0002",
+      "shiftId": "TV-N",
+      "category": null,
+      "weekday": 5,
+      "kind": "ON_REQUEST",
+      "validFrom": null,
+      "validTo": null
+    }
+  ],
+  "history": [
+    {
+      "personId": "P0001",
+      "month": "2026-10",
+      "source": "import",
+      "nights": 3,
+      "weekendsWorked": 2,
+      "holidays": 0,
+      "unpopular": 2,
+      "wishes": 4,
+      "wishesMet": 3,
+      "hours": 171.5,
+      "hoursAccountAfter": 6.5,
+      "compRestBalanceAfter": 2,
+      "compRestUsed": 1,
+      "compRestEarned": 0
+    },
+    {
+      "personId": "P0002",
+      "month": "2026-10",
+      "source": "plan",
+      "nights": 5,
+      "weekendsWorked": 3,
+      "holidays": 1,
+      "unpopular": 4,
+      "wishes": 2,
+      "wishesMet": 2,
+      "hours": 160.0,
+      "hoursAccountAfter": null,
+      "compRestBalanceAfter": null,
+      "compRestUsed": 0,
+      "compRestEarned": 1
+    }
+  ],
+  "periods": [
+    {
+      "month": "2027-01",
+      "absences": [
+        {
+          "personId": "P0001",
+          "date": "2027-01-11",
+          "typeCode": "U"
+        },
+        {
+          "personId": "P0002",
+          "date": "2027-01-12",
+          "typeCode": "ZA"
+        },
+        {
+          "personId": "P0003",
+          "date": "2027-01-13",
+          "typeCode": "ER"
+        }
+      ],
+      "wishes": [
+        {
+          "personId": "P0001",
+          "date": "2027-01-24",
+          "kind": "OFF",
+          "shiftId": null
+        },
+        {
+          "personId": "P0002",
+          "date": "2027-01-15",
+          "kind": "SHIFT",
+          "shiftId": "TV-N"
+        },
+        {
+          "personId": "P0003",
+          "date": "2027-01-16",
+          "kind": "NOT_SHIFT",
+          "shiftId": "AN-F"
+        },
+        {
+          "personId": "P0003",
+          "date": "2027-01-17",
+          "kind": "DUTY",
+          "shiftId": null
+        }
+      ],
+      "fixed": [
+        {
+          "personId": "P0001",
+          "date": "2027-01-02",
+          "shiftId": "AN-F"
+        },
+        {
+          "personId": "P0003",
+          "date": "2027-01-03",
+          "shiftId": null
+        }
+      ],
+      "previousDuties": [
+        {
+          "personId": "P0002",
+          "date": "2026-12-31",
+          "shiftId": "TV-N"
+        }
+      ]
+    }
+  ]
+}

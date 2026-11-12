@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Repository checks
+        run: |
+          sh scripts/test-check-repo.sh
+          sh scripts/check-repo.sh
+      - name: OCR tools
+        run: |
+          SUDO=$(command -v sudo || true)
+          $SUDO apt-get update -qq
+          $SUDO apt-get install -y -qq tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng librsvg2-bin python3-pil fonts-dejavu-core
+      - name: Text in images
+        run: |
+          scripts/test-check-images.sh
+          scripts/check-images.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test tools
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Tests
+        run: python -m pytest -q

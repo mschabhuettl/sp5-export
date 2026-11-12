@@ -1,0 +1,2964 @@
+{
+ "format": "dispofold/dataset",
+ "version": 2,
+ "source": "synthetic",
+ "areas": [
+  {
+   "id": "AN",
+   "name": "Notrufannahme",
+   "color": "#B45309"
+  },
+  {
+   "id": "DR",
+   "name": "Disposition Rettung",
+   "color": "#15803D"
+  },
+  {
+   "id": "TV",
+   "name": "Transportvermittlung",
+   "color": "#2563EB"
+  }
+ ],
+ "shifts": [
+  {
+   "id": "AN-F",
+   "areaId": "AN",
+   "code": "A1",
+   "name": "Annahme früh 06:30",
+   "start": "06:30",
+   "end": "14:30",
+   "category": "EARLY",
+   "color": "#F3E3D8",
+   "unpopular": false
+  },
+  {
+   "id": "AN-T",
+   "areaId": "AN",
+   "code": "A2",
+   "name": "Annahme Tag 07:00",
+   "start": "07:00",
+   "end": "19:00",
+   "category": "DAY",
+   "color": "#F6EAE1",
+   "unpopular": false
+  },
+  {
+   "id": "AN-S",
+   "areaId": "AN",
+   "code": "A3",
+   "name": "Annahme spät 14:00",
+   "start": "14:00",
+   "end": "22:00",
+   "category": "LATE",
+   "color": "#EED9C9",
+   "unpopular": false
+  },
+  {
+   "id": "AN-N",
+   "areaId": "AN",
+   "code": "A4",
+   "name": "Annahme Nacht 21:30",
+   "start": "21:30",
+   "end": "06:30",
+   "category": "NIGHT",
+   "color": "#E7C8B0",
+   "unpopular": true
+  },
+  {
+   "id": "DR-T",
+   "areaId": "DR",
+   "code": "R1",
+   "name": "Disposition Tag 07:00",
+   "start": "07:00",
+   "end": "19:00",
+   "category": "DAY",
+   "color": "#E3F0E8",
+   "unpopular": false
+  },
+  {
+   "id": "DR-M",
+   "areaId": "DR",
+   "code": "R2",
+   "name": "Disposition Mitte 09:00",
+   "start": "09:00",
+   "end": "17:00",
+   "category": "DAY",
+   "color": "#E3F0E8",
+   "unpopular": false
+  },
+  {
+   "id": "DR-A",
+   "areaId": "DR",
+   "code": "R3",
+   "name": "Disposition Abend 13:00",
+   "start": "13:00",
+   "end": "21:00",
+   "category": "LATE",
+   "color": "#CCE3D4",
+   "unpopular": false
+  },
+  {
+   "id": "DR-N",
+   "areaId": "DR",
+   "code": "R4",
+   "name": "Disposition Nacht 19:00",
+   "start": "19:00",
+   "end": "07:00",
+   "category": "NIGHT",
+   "color": "#B4D6C1",
+   "unpopular": true
+  },
+  {
+   "id": "TV-F",
+   "areaId": "TV",
+   "code": "V1",
+   "name": "Transport früh 07:30",
+   "start": "07:30",
+   "end": "15:30",
+   "category": "EARLY",
+   "color": "#DCE6FC",
+   "unpopular": false
+  },
+  {
+   "id": "TV-S",
+   "areaId": "TV",
+   "code": "V2",
+   "name": "Transport spät 11:30",
+   "start": "11:30",
+   "end": "19:30",
+   "category": "LATE",
+   "color": "#CFDDFB",
+   "unpopular": false
+  }
+ ],
+ "demand": [
+  {
+   "areaId": "AN",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "06:30",
+   "to": "07:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "AN",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "07:00",
+   "to": "14:00",
+   "min": 2,
+   "max": null
+  },
+  {
+   "areaId": "AN",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "14:00",
+   "to": "14:30",
+   "min": 3,
+   "max": null
+  },
+  {
+   "areaId": "AN",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "14:30",
+   "to": "19:00",
+   "min": 2,
+   "max": null
+  },
+  {
+   "areaId": "AN",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "19:00",
+   "to": "22:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "AN",
+   "days": [
+    "SAT",
+    "SUN"
+   ],
+   "date": null,
+   "from": "07:00",
+   "to": "19:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "AN",
+   "days": [
+    "HOL"
+   ],
+   "date": null,
+   "from": "07:00",
+   "to": "19:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "DR",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "00:00",
+   "to": "07:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "DR",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "07:00",
+   "to": "19:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "DR",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "19:00",
+   "to": "00:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "DR",
+   "days": [
+    "SAT",
+    "SUN"
+   ],
+   "date": null,
+   "from": "00:00",
+   "to": "07:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "DR",
+   "days": [
+    "SAT",
+    "SUN"
+   ],
+   "date": null,
+   "from": "07:00",
+   "to": "19:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "DR",
+   "days": [
+    "SAT",
+    "SUN"
+   ],
+   "date": null,
+   "from": "19:00",
+   "to": "00:00",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "TV",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "07:30",
+   "to": "11:30",
+   "min": 1,
+   "max": null
+  },
+  {
+   "areaId": "TV",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "11:30",
+   "to": "15:30",
+   "min": 2,
+   "max": null
+  },
+  {
+   "areaId": "TV",
+   "days": [
+    "MON",
+    "TUE",
+    "WED",
+    "THU",
+    "FRI"
+   ],
+   "date": null,
+   "from": "15:30",
+   "to": "19:30",
+   "min": 1,
+   "max": null
+  }
+ ],
+ "holidays": [
+  {
+   "date": "2026-01-01",
+   "name": "Neujahr"
+  },
+  {
+   "date": "2026-01-06",
+   "name": "Heilige Drei Könige"
+  },
+  {
+   "date": "2026-04-06",
+   "name": "Ostermontag"
+  },
+  {
+   "date": "2026-05-01",
+   "name": "Staatsfeiertag"
+  },
+  {
+   "date": "2026-05-14",
+   "name": "Christi Himmelfahrt"
+  },
+  {
+   "date": "2026-05-25",
+   "name": "Pfingstmontag"
+  },
+  {
+   "date": "2026-06-04",
+   "name": "Fronleichnam"
+  },
+  {
+   "date": "2026-08-15",
+   "name": "Mariä Himmelfahrt"
+  },
+  {
+   "date": "2026-10-26",
+   "name": "Nationalfeiertag"
+  },
+  {
+   "date": "2026-11-01",
+   "name": "Allerheiligen"
+  },
+  {
+   "date": "2026-12-08",
+   "name": "Mariä Empfängnis"
+  },
+  {
+   "date": "2026-12-25",
+   "name": "Christtag"
+  },
+  {
+   "date": "2026-12-26",
+   "name": "Stefanitag"
+  },
+  {
+   "date": "2027-01-01",
+   "name": "Neujahr"
+  },
+  {
+   "date": "2027-01-06",
+   "name": "Heilige Drei Könige"
+  },
+  {
+   "date": "2027-03-29",
+   "name": "Ostermontag"
+  },
+  {
+   "date": "2027-05-01",
+   "name": "Staatsfeiertag"
+  },
+  {
+   "date": "2027-05-06",
+   "name": "Christi Himmelfahrt"
+  },
+  {
+   "date": "2027-05-17",
+   "name": "Pfingstmontag"
+  },
+  {
+   "date": "2027-05-27",
+   "name": "Fronleichnam"
+  },
+  {
+   "date": "2027-08-15",
+   "name": "Mariä Himmelfahrt"
+  },
+  {
+   "date": "2027-10-26",
+   "name": "Nationalfeiertag"
+  },
+  {
+   "date": "2027-11-01",
+   "name": "Allerheiligen"
+  },
+  {
+   "date": "2027-12-08",
+   "name": "Mariä Empfängnis"
+  },
+  {
+   "date": "2027-12-25",
+   "name": "Christtag"
+  },
+  {
+   "date": "2027-12-26",
+   "name": "Stefanitag"
+  }
+ ],
+ "absenceTypes": [
+  {
+   "code": "U",
+   "name": "Urlaub",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#A3C585"
+  },
+  {
+   "code": "ER",
+   "name": "Ersatzruhe",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": true,
+   "color": "#8FD3C7"
+  },
+  {
+   "code": "K",
+   "name": "Krankenstand",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#E39B8F"
+  },
+  {
+   "code": "ZA",
+   "name": "Zeitausgleich",
+   "reducesTarget": true,
+   "chargesAccount": true,
+   "compensatoryRest": false,
+   "color": "#C8C08A"
+  },
+  {
+   "code": "KUR",
+   "name": "Kur und Rehabilitation",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#B9A3CF"
+  },
+  {
+   "code": "KA",
+   "name": "Karenz",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#BFBFBF"
+  },
+  {
+   "code": "PF",
+   "name": "Pflegefreistellung",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#E7B98C"
+  },
+  {
+   "code": "SU",
+   "name": "Sonderurlaub",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#A9C9E6"
+  },
+  {
+   "code": "FB",
+   "name": "Fortbildung",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#8FB3D9"
+  },
+  {
+   "code": "DR",
+   "name": "Dienstreise",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#A7B7C7"
+  },
+  {
+   "code": "AU",
+   "name": "Arbeitsunfall",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#D98F8F"
+  },
+  {
+   "code": "PM",
+   "name": "Papamonat",
+   "reducesTarget": true,
+   "chargesAccount": false,
+   "compensatoryRest": false,
+   "color": "#C7B6A0"
+  }
+ ],
+ "people": [
+  {
+   "id": "P0001",
+   "firstName": "Waltraud",
+   "lastName": "Erlenhuber",
+   "shortName": "WER",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN"
+   ],
+   "hoursAccount": 0.0,
+   "compRestBalance": 2,
+   "familyRules": [],
+   "externalId": "1001",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0002",
+   "firstName": "Jakob",
+   "lastName": "Steinmayr",
+   "shortName": "JST",
+   "weeklyHours": 25.0,
+   "areaIds": [
+    "AN",
+    "DR"
+   ],
+   "hoursAccount": -17.5,
+   "compRestBalance": 3,
+   "familyRules": [],
+   "externalId": "1002",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0003",
+   "firstName": "Anna",
+   "lastName": "Fichtenhuber",
+   "shortName": "AFI",
+   "weeklyHours": 25.0,
+   "areaIds": [
+    "AN",
+    "DR"
+   ],
+   "hoursAccount": -15.0,
+   "compRestBalance": 0,
+   "familyRules": [],
+   "externalId": "1003",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0004",
+   "firstName": "Verena",
+   "lastName": "Rehsteiner",
+   "shortName": "VRE",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN",
+    "DR"
+   ],
+   "hoursAccount": 25.5,
+   "compRestBalance": 0,
+   "familyRules": [],
+   "externalId": "1004",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0005",
+   "firstName": "Birgit",
+   "lastName": "Hollenwieser",
+   "shortName": "BHO",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN",
+    "DR"
+   ],
+   "hoursAccount": 18.5,
+   "compRestBalance": 5,
+   "familyRules": [],
+   "externalId": "1005",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0006",
+   "firstName": "Georg",
+   "lastName": "Rainerreiter",
+   "shortName": "GRA",
+   "weeklyHours": 30.0,
+   "areaIds": [
+    "DR",
+    "TV"
+   ],
+   "hoursAccount": 10.5,
+   "compRestBalance": 2,
+   "familyRules": [],
+   "externalId": "1006",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0007",
+   "firstName": "Franziska",
+   "lastName": "Bacher",
+   "shortName": "FBA",
+   "weeklyHours": 25.0,
+   "areaIds": [
+    "AN",
+    "TV"
+   ],
+   "hoursAccount": 26.0,
+   "compRestBalance": 0,
+   "familyRules": [],
+   "externalId": "1007",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0008",
+   "firstName": "Thomas",
+   "lastName": "Lindengruber",
+   "shortName": "TLI",
+   "weeklyHours": 20.0,
+   "areaIds": [
+    "TV"
+   ],
+   "hoursAccount": -12.0,
+   "compRestBalance": 2,
+   "familyRules": [],
+   "externalId": "1008",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0009",
+   "firstName": "Olivia",
+   "lastName": "Weidenberger",
+   "shortName": "OWE",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "DR"
+   ],
+   "hoursAccount": -5.5,
+   "compRestBalance": 1,
+   "familyRules": [],
+   "externalId": "1009",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0010",
+   "firstName": "Magdalena",
+   "lastName": "Wiesenwieser",
+   "shortName": "MWI",
+   "weeklyHours": 30.0,
+   "areaIds": [
+    "AN",
+    "DR"
+   ],
+   "hoursAccount": -16.5,
+   "compRestBalance": 0,
+   "familyRules": [],
+   "externalId": "1010",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0011",
+   "firstName": "Leopold",
+   "lastName": "Rehegger",
+   "shortName": "LRE",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "TV"
+   ],
+   "hoursAccount": -11.5,
+   "compRestBalance": 4,
+   "familyRules": [],
+   "externalId": "1011",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0012",
+   "firstName": "Eva",
+   "lastName": "Feldleitner",
+   "shortName": "EFE",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "DR"
+   ],
+   "hoursAccount": -3.5,
+   "compRestBalance": 5,
+   "familyRules": [],
+   "externalId": "1012",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0013",
+   "firstName": "Martina",
+   "lastName": "Quellenwinkler",
+   "shortName": "MQU",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN",
+    "TV"
+   ],
+   "hoursAccount": -9.5,
+   "compRestBalance": 3,
+   "familyRules": [
+    {
+     "weekdays": [
+      2,
+      3
+     ],
+     "latestEnd": null,
+     "earliestStart": "08:00",
+     "noNights": false,
+     "note": "Pflege von Angehörigen"
+    }
+   ],
+   "externalId": "1013",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0014",
+   "firstName": "Tanja",
+   "lastName": "Mooslechner",
+   "shortName": "TMO",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN",
+    "DR",
+    "TV"
+   ],
+   "hoursAccount": 4.0,
+   "compRestBalance": 2,
+   "familyRules": [
+    {
+     "weekdays": [
+      4
+     ],
+     "latestEnd": null,
+     "earliestStart": null,
+     "noNights": true,
+     "note": "Pflege von Angehörigen"
+    }
+   ],
+   "externalId": "1014",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0015",
+   "firstName": "Birgit",
+   "lastName": "Bachbauer",
+   "shortName": "BBA",
+   "weeklyHours": 25.0,
+   "areaIds": [
+    "DR"
+   ],
+   "hoursAccount": -12.0,
+   "compRestBalance": 3,
+   "familyRules": [],
+   "externalId": "1015",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0016",
+   "firstName": "Sebastian",
+   "lastName": "Tannenbichler",
+   "shortName": "STA",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN"
+   ],
+   "hoursAccount": -12.5,
+   "compRestBalance": 0,
+   "familyRules": [],
+   "externalId": "1016",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0017",
+   "firstName": "Valentin",
+   "lastName": "Grünhuber",
+   "shortName": "VGR",
+   "weeklyHours": 30.0,
+   "areaIds": [
+    "AN"
+   ],
+   "hoursAccount": 18.5,
+   "compRestBalance": 4,
+   "familyRules": [],
+   "externalId": "1017",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0018",
+   "firstName": "Ulrich",
+   "lastName": "Erlenreiter",
+   "shortName": "UER",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN"
+   ],
+   "hoursAccount": -11.0,
+   "compRestBalance": 1,
+   "familyRules": [],
+   "externalId": "1018",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0019",
+   "firstName": "Lena",
+   "lastName": "Haselwieser",
+   "shortName": "LHA",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN",
+    "TV"
+   ],
+   "hoursAccount": -1.0,
+   "compRestBalance": 3,
+   "familyRules": [],
+   "externalId": "1019",
+   "entryDate": null,
+   "exitDate": null
+  },
+  {
+   "id": "P0020",
+   "firstName": "Doris",
+   "lastName": "Waldlechner",
+   "shortName": "DWA",
+   "weeklyHours": 39.0,
+   "areaIds": [
+    "AN",
+    "DR"
+   ],
+   "hoursAccount": -4.0,
+   "compRestBalance": 4,
+   "familyRules": [],
+   "externalId": "1020",
+   "entryDate": null,
+   "exitDate": null
+  }
+ ],
+ "restrictions": [
+  {
+   "personId": "P0001",
+   "shiftId": "AN-F",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0001",
+   "shiftId": "AN-N",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0001",
+   "shiftId": "AN-S",
+   "weekday": 6,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0005",
+   "shiftId": "DR-T",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0005",
+   "shiftId": "AN-F",
+   "weekday": 6,
+   "kind": "ON_REQUEST"
+  },
+  {
+   "personId": "P0012",
+   "shiftId": "DR-T",
+   "weekday": 2,
+   "kind": "ON_REQUEST"
+  },
+  {
+   "personId": "P0012",
+   "shiftId": "DR-M",
+   "weekday": 2,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0012",
+   "shiftId": "DR-N",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0012",
+   "shiftId": "DR-A",
+   "weekday": 1,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0013",
+   "shiftId": "TV-F",
+   "weekday": 0,
+   "kind": "ON_REQUEST"
+  },
+  {
+   "personId": "P0013",
+   "shiftId": "AN-N",
+   "weekday": 1,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0014",
+   "shiftId": "TV-F",
+   "weekday": 5,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0014",
+   "shiftId": "AN-N",
+   "weekday": 3,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0014",
+   "shiftId": "TV-S",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0015",
+   "shiftId": "DR-M",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0015",
+   "shiftId": "DR-N",
+   "weekday": 4,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0015",
+   "shiftId": "DR-A",
+   "weekday": 0,
+   "kind": "ON_REQUEST"
+  },
+  {
+   "personId": "P0016",
+   "shiftId": "AN-F",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0016",
+   "shiftId": "AN-S",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0018",
+   "shiftId": "AN-S",
+   "weekday": 0,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0018",
+   "shiftId": "AN-T",
+   "weekday": 7,
+   "kind": "NEVER"
+  },
+  {
+   "personId": "P0020",
+   "shiftId": "AN-T",
+   "weekday": 1,
+   "kind": "ON_REQUEST"
+  }
+ ],
+ "history": [
+  {
+   "personId": "P0001",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 171.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0002",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 6,
+   "wishesMet": 4,
+   "hours": 115.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0003",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 3,
+   "wishes": 5,
+   "wishesMet": 5,
+   "hours": 117.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0004",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 3,
+   "wishesMet": 3,
+   "hours": 178.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0005",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 3,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 4,
+   "wishesMet": 4,
+   "hours": 176.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0006",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 5,
+   "wishes": 4,
+   "wishesMet": 4,
+   "hours": 123.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0007",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 3,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 3,
+   "wishesMet": 1,
+   "hours": 114.2,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0008",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 0,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 0,
+   "wishes": 1,
+   "wishesMet": 1,
+   "hours": 92.1,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0009",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 6,
+   "wishes": 5,
+   "wishesMet": 4,
+   "hours": 160.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0010",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 1,
+   "holidays": 1,
+   "unpopular": 3,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 128.8,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0011",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 0,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 0,
+   "wishes": 4,
+   "wishesMet": 3,
+   "hours": 178.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0012",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 6,
+   "wishes": 2,
+   "wishesMet": 2,
+   "hours": 160.8,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0013",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 5,
+   "wishes": 2,
+   "wishesMet": 1,
+   "hours": 176.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0014",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 5,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 169.9,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0015",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 2,
+   "wishes": 1,
+   "wishesMet": 0,
+   "hours": 100.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0016",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 6,
+   "wishes": 2,
+   "wishesMet": 1,
+   "hours": 163.0,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0017",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 4,
+   "holidays": 1,
+   "unpopular": 3,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 134.2,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0018",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 6,
+   "wishesMet": 6,
+   "hours": 160.1,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0019",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 6,
+   "wishesMet": 5,
+   "hours": 163.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0020",
+   "month": "2026-10",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 5,
+   "wishes": 2,
+   "wishesMet": 0,
+   "hours": 178.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0001",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 1,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 5,
+   "wishesMet": 4,
+   "hours": 176.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0002",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 2,
+   "wishes": 3,
+   "wishesMet": 3,
+   "hours": 105.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0003",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 5,
+   "wishes": 4,
+   "wishesMet": 2,
+   "hours": 103.9,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0004",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 3,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 161.9,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0005",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 177.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0006",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 5,
+   "wishes": 3,
+   "wishesMet": 2,
+   "hours": 120.2,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0007",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 2,
+   "wishesMet": 0,
+   "hours": 101.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0008",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 0,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 0,
+   "wishes": 4,
+   "wishesMet": 2,
+   "hours": 90.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0009",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 2,
+   "wishesMet": 2,
+   "hours": 167.0,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0010",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 6,
+   "wishes": 5,
+   "wishesMet": 3,
+   "hours": 123.8,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0011",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 0,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 0,
+   "wishes": 1,
+   "wishesMet": 0,
+   "hours": 172.8,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0012",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 4,
+   "holidays": 1,
+   "unpopular": 2,
+   "wishes": 6,
+   "wishesMet": 5,
+   "hours": 163.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0013",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 6,
+   "wishes": 5,
+   "wishesMet": 5,
+   "hours": 172.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0014",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 5,
+   "wishes": 5,
+   "wishesMet": 3,
+   "hours": 159.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0015",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 3,
+   "wishes": 6,
+   "wishesMet": 5,
+   "hours": 112.0,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0016",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 2,
+   "wishes": 3,
+   "wishesMet": 3,
+   "hours": 173.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0017",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 4,
+   "wishes": 3,
+   "wishesMet": 1,
+   "hours": 130.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0018",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 5,
+   "wishesMet": 5,
+   "hours": 171.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0019",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 4,
+   "wishes": 4,
+   "wishesMet": 3,
+   "hours": 176.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0020",
+   "month": "2026-11",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 5,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 169.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0001",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 4,
+   "holidays": 2,
+   "unpopular": 2,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 172.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0002",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 5,
+   "wishes": 5,
+   "wishesMet": 3,
+   "hours": 110.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0003",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 3,
+   "holidays": 2,
+   "unpopular": 2,
+   "wishes": 4,
+   "wishesMet": 3,
+   "hours": 117.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0004",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 1,
+   "holidays": 1,
+   "unpopular": 6,
+   "wishes": 6,
+   "wishesMet": 4,
+   "hours": 168.0,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0005",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 6,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 173.9,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0006",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 3,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 130.4,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0007",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 1,
+   "holidays": 2,
+   "unpopular": 4,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 100.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0008",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 0,
+   "weekendsWorked": 3,
+   "holidays": 1,
+   "unpopular": 0,
+   "wishes": 6,
+   "wishesMet": 5,
+   "hours": 85.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0009",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 2,
+   "holidays": 2,
+   "unpopular": 6,
+   "wishes": 3,
+   "wishesMet": 1,
+   "hours": 178.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0010",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 6,
+   "wishes": 5,
+   "wishesMet": 3,
+   "hours": 133.1,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0011",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 0,
+   "weekendsWorked": 4,
+   "holidays": 2,
+   "unpopular": 0,
+   "wishes": 2,
+   "wishesMet": 1,
+   "hours": 172.2,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0012",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 2,
+   "holidays": 1,
+   "unpopular": 6,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 166.3,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0013",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 4,
+   "weekendsWorked": 4,
+   "holidays": 2,
+   "unpopular": 4,
+   "wishes": 6,
+   "wishesMet": 5,
+   "hours": 170.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0014",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 4,
+   "holidays": 1,
+   "unpopular": 5,
+   "wishes": 6,
+   "wishesMet": 4,
+   "hours": 167.7,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  },
+  {
+   "personId": "P0015",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 2,
+   "weekendsWorked": 3,
+   "holidays": 0,
+   "unpopular": 2,
+   "wishes": 6,
+   "wishesMet": 6,
+   "hours": 104.8,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0016",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 4,
+   "holidays": 0,
+   "unpopular": 6,
+   "wishes": 4,
+   "wishesMet": 3,
+   "hours": 167.6,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0017",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 6,
+   "weekendsWorked": 4,
+   "holidays": 2,
+   "unpopular": 6,
+   "wishes": 1,
+   "wishesMet": 0,
+   "hours": 135.2,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 2
+  },
+  {
+   "personId": "P0018",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 5,
+   "weekendsWorked": 2,
+   "holidays": 0,
+   "unpopular": 5,
+   "wishes": 4,
+   "wishesMet": 4,
+   "hours": 159.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0019",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 1,
+   "holidays": 0,
+   "unpopular": 3,
+   "wishes": 2,
+   "wishesMet": 2,
+   "hours": 172.5,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 0
+  },
+  {
+   "personId": "P0020",
+   "month": "2026-12",
+   "source": "import",
+   "nights": 3,
+   "weekendsWorked": 1,
+   "holidays": 1,
+   "unpopular": 3,
+   "wishes": 0,
+   "wishesMet": 0,
+   "hours": 177.0,
+   "hoursAccountAfter": null,
+   "compRestBalanceAfter": null,
+   "compRestUsed": 0,
+   "compRestEarned": 1
+  }
+ ],
+ "periods": [
+  {
+   "month": "2027-01",
+   "absences": [
+    {
+     "personId": "P0002",
+     "date": "2027-01-14",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-15",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-16",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-17",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-18",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-19",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-20",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-21",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-22",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0003",
+     "date": "2027-01-22",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0003",
+     "date": "2027-01-23",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0006",
+     "date": "2027-01-21",
+     "typeCode": "FB"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-04",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-05",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-06",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-07",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-08",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-09",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0009",
+     "date": "2027-01-10",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-18",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-19",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-20",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-21",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-22",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-23",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-24",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0013",
+     "date": "2027-01-25",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0013",
+     "date": "2027-01-26",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0013",
+     "date": "2027-01-27",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-13",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-14",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-15",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-16",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-17",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-18",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-19",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-20",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-21",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-22",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-23",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-24",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0016",
+     "date": "2027-01-25",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-04",
+     "typeCode": "K"
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-05",
+     "typeCode": "K"
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-06",
+     "typeCode": "K"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-03",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-04",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-05",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-06",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-07",
+     "typeCode": "U"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-24",
+     "typeCode": "ER"
+    }
+   ],
+   "wishes": [
+    {
+     "personId": "P0001",
+     "date": "2027-01-02",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0001",
+     "date": "2027-01-06",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0001",
+     "date": "2027-01-10",
+     "kind": "DUTY",
+     "shiftId": null
+    },
+    {
+     "personId": "P0001",
+     "date": "2027-01-19",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0001",
+     "date": "2027-01-24",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-09",
+     "kind": "SHIFT",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-13",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0002",
+     "date": "2027-01-30",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0003",
+     "date": "2027-01-06",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0003",
+     "date": "2027-01-18",
+     "kind": "SHIFT",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0003",
+     "date": "2027-01-31",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0005",
+     "date": "2027-01-11",
+     "kind": "SHIFT",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0005",
+     "date": "2027-01-19",
+     "kind": "DUTY",
+     "shiftId": null
+    },
+    {
+     "personId": "P0005",
+     "date": "2027-01-27",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0005",
+     "date": "2027-01-28",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0005",
+     "date": "2027-01-31",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0006",
+     "date": "2027-01-27",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0007",
+     "date": "2027-01-06",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0007",
+     "date": "2027-01-14",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0007",
+     "date": "2027-01-19",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0007",
+     "date": "2027-01-30",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0008",
+     "date": "2027-01-05",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0008",
+     "date": "2027-01-12",
+     "kind": "SHIFT",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0008",
+     "date": "2027-01-13",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0008",
+     "date": "2027-01-19",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0008",
+     "date": "2027-01-22",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-04",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-26",
+     "kind": "SHIFT",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0010",
+     "date": "2027-01-27",
+     "kind": "SHIFT",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0011",
+     "date": "2027-01-06",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0011",
+     "date": "2027-01-08",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0011",
+     "date": "2027-01-20",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0011",
+     "date": "2027-01-29",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0011",
+     "date": "2027-01-30",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0013",
+     "date": "2027-01-01",
+     "kind": "SHIFT",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0013",
+     "date": "2027-01-07",
+     "kind": "DUTY",
+     "shiftId": null
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-28",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-29",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0015",
+     "date": "2027-01-30",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0018",
+     "date": "2027-01-09",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0018",
+     "date": "2027-01-17",
+     "kind": "NOT_SHIFT",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0018",
+     "date": "2027-01-23",
+     "kind": "SHIFT",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-22",
+     "kind": "OFF",
+     "shiftId": null
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-29",
+     "kind": "DUTY",
+     "shiftId": null
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-30",
+     "kind": "SHIFT",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0020",
+     "date": "2027-01-28",
+     "kind": "OFF",
+     "shiftId": null
+    }
+   ],
+   "fixed": [
+    {
+     "personId": "P0001",
+     "date": "2027-01-25",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0019",
+     "date": "2027-01-31",
+     "shiftId": "AN-S"
+    }
+   ],
+   "previousDuties": [
+    {
+     "personId": "P0001",
+     "date": "2026-12-25",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0001",
+     "date": "2026-12-27",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0001",
+     "date": "2026-12-28",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0001",
+     "date": "2026-12-31",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0002",
+     "date": "2026-12-26",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0002",
+     "date": "2026-12-27",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0002",
+     "date": "2026-12-30",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0002",
+     "date": "2026-12-31",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0003",
+     "date": "2026-12-25",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0003",
+     "date": "2026-12-26",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0003",
+     "date": "2026-12-27",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0003",
+     "date": "2026-12-28",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0003",
+     "date": "2026-12-31",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0004",
+     "date": "2026-12-25",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0004",
+     "date": "2026-12-28",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0004",
+     "date": "2026-12-29",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0004",
+     "date": "2026-12-30",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0004",
+     "date": "2026-12-31",
+     "shiftId": "DR-N"
+    },
+    {
+     "personId": "P0005",
+     "date": "2026-12-25",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0005",
+     "date": "2026-12-26",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0005",
+     "date": "2026-12-27",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0005",
+     "date": "2026-12-30",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0005",
+     "date": "2026-12-31",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0006",
+     "date": "2026-12-28",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0006",
+     "date": "2026-12-29",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0006",
+     "date": "2026-12-30",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0007",
+     "date": "2026-12-25",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0007",
+     "date": "2026-12-28",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0007",
+     "date": "2026-12-29",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0008",
+     "date": "2026-12-25",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0008",
+     "date": "2026-12-29",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0008",
+     "date": "2026-12-30",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0008",
+     "date": "2026-12-31",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0009",
+     "date": "2026-12-25",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0009",
+     "date": "2026-12-26",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0009",
+     "date": "2026-12-30",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0009",
+     "date": "2026-12-31",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0010",
+     "date": "2026-12-27",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0010",
+     "date": "2026-12-28",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0010",
+     "date": "2026-12-31",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0011",
+     "date": "2026-12-26",
+     "shiftId": "TV-F"
+    },
+    {
+     "personId": "P0011",
+     "date": "2026-12-27",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0011",
+     "date": "2026-12-28",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0011",
+     "date": "2026-12-29",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0012",
+     "date": "2026-12-25",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0012",
+     "date": "2026-12-28",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0012",
+     "date": "2026-12-29",
+     "shiftId": "DR-T"
+    },
+    {
+     "personId": "P0012",
+     "date": "2026-12-30",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0012",
+     "date": "2026-12-31",
+     "shiftId": "DR-M"
+    },
+    {
+     "personId": "P0013",
+     "date": "2026-12-25",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0013",
+     "date": "2026-12-26",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0013",
+     "date": "2026-12-27",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0013",
+     "date": "2026-12-28",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0014",
+     "date": "2026-12-25",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0014",
+     "date": "2026-12-26",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0014",
+     "date": "2026-12-27",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0014",
+     "date": "2026-12-31",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0015",
+     "date": "2026-12-25",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0015",
+     "date": "2026-12-26",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0015",
+     "date": "2026-12-30",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0015",
+     "date": "2026-12-31",
+     "shiftId": "DR-A"
+    },
+    {
+     "personId": "P0016",
+     "date": "2026-12-25",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0016",
+     "date": "2026-12-26",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0016",
+     "date": "2026-12-30",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0016",
+     "date": "2026-12-31",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0017",
+     "date": "2026-12-25",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0017",
+     "date": "2026-12-26",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0017",
+     "date": "2026-12-30",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0017",
+     "date": "2026-12-31",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0018",
+     "date": "2026-12-26",
+     "shiftId": "AN-T"
+    },
+    {
+     "personId": "P0018",
+     "date": "2026-12-30",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0018",
+     "date": "2026-12-31",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0019",
+     "date": "2026-12-26",
+     "shiftId": "AN-F"
+    },
+    {
+     "personId": "P0019",
+     "date": "2026-12-27",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0019",
+     "date": "2026-12-28",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0019",
+     "date": "2026-12-29",
+     "shiftId": "TV-S"
+    },
+    {
+     "personId": "P0020",
+     "date": "2026-12-27",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0020",
+     "date": "2026-12-28",
+     "shiftId": "AN-S"
+    },
+    {
+     "personId": "P0020",
+     "date": "2026-12-29",
+     "shiftId": "AN-S"
+    }
+   ]
+  }
+ ]
+}

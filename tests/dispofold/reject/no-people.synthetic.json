@@ -1,0 +1,58 @@
+{
+  "format": "dispofold/dataset",
+  "version": 2,
+  "areas": [
+    {
+      "id": "AN"
+    }
+  ],
+  "shifts": [
+    {
+      "id": "AN-F",
+      "areaId": "AN",
+      "start": "06:30",
+      "end": "14:30"
+    },
+    {
+      "id": "AN-N",
+      "areaId": "AN",
+      "start": "19:00",
+      "end": "07:00"
+    }
+  ],
+  "demand": [
+    {
+      "areaId": "AN",
+      "days": [
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+        "SUN"
+      ],
+      "from": "06:30",
+      "to": "14:30",
+      "min": 1
+    }
+  ],
+  "holidays": [],
+  "absenceTypes": [
+    {
+      "code": "U"
+    }
+  ],
+  "people": [],
+  "restrictions": [],
+  "history": [],
+  "periods": [
+    {
+      "month": "2027-01",
+      "absences": [],
+      "wishes": [],
+      "fixed": [],
+      "previousDuties": []
+    }
+  ]
+}

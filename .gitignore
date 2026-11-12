@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# Exported datasets and other JSON output; only the example mapping, the test fixtures and the copies from
+# Dispofold are kept.
+*.json
+!/mapping.example.json
+!/tests/fixtures/*.json
+!/tests/dispofold/**/*.json
+
+# SP5 data never belongs in the repository.
+*.DBF
+*.dbf
+*.CDX
+*.cdx

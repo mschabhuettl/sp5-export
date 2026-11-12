@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dispofold dataset, version 2",
+  "description": "Import and master data format, see datenformat.md. Unknown keys are ignored by the application. Reference checks (ids, dates inside the month, shift lengths) are done by the import and are not part of this schema.",
+  "type": "object",
+  "required": ["format", "version", "areas", "shifts", "demand", "holidays", "absenceTypes", "people",
+    "restrictions", "history", "periods"],
+  "properties": {
+    "format": { "const": "dispofold/dataset" },
+    "version": { "const": 2 },
+    "source": { "type": ["string", "null"] },
+    "areas": { "type": "array", "items": { "$ref": "#/$defs/area" } },
+    "shifts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/shift" } },
+    "demand": { "type": "array", "items": { "$ref": "#/$defs/demandRule" } },
+    "holidays": { "type": "array", "items": { "$ref": "#/$defs/holiday" } },
+    "absenceTypes": { "type": "array", "items": { "$ref": "#/$defs/absenceType" } },
+    "people": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/person" } },
+    "restrictions": { "type": "array", "items": { "$ref": "#/$defs/restriction" } },
+    "history": { "type": "array", "items": { "$ref": "#/$defs/historyEntry" } },
+    "periods": { "type": "array", "items": { "$ref": "#/$defs/period" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "date": { "type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$" },
+    "dateOrNull": { "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }] },
+    "month": { "type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$" },
+    "time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$" },
+    "timeOrNull": { "anyOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }] },
+    "stringOrNull": { "type": ["string", "null"] },
+    "category": { "enum": ["EARLY", "DAY", "LATE", "NIGHT"] },
+    "area": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/stringOrNull" },
+        "color": { "$ref": "#/$defs/stringOrNull" }
+      }
+    },
+    "shift": {
+      "type": "object",
+      "required": ["id", "areaId", "start", "end"],
+      "properties": {
+        "id": { "allOf": [{ "$ref": "#/$defs/id" }, { "not": { "const": "ER" } }] },
+        "areaId": { "$ref": "#/$defs/id" },
+        "code": { "$ref": "#/$defs/stringOrNull" },
+        "name": { "$ref": "#/$defs/stringOrNull" },
+        "start": { "$ref": "#/$defs/time" },
+        "end": { "$ref": "#/$defs/time" },
+        "category": { "anyOf": [{ "$ref": "#/$defs/category" }, { "type": "null" }] },
+        "color": { "$ref": "#/$defs/stringOrNull" },
+        "unpopular": { "type": "boolean" }
+      }
+    },
+    "demandRule": {
+      "type": "object",
+      "required": ["areaId", "from", "to", "min"],
+      "properties": {
+        "areaId": { "$ref": "#/$defs/id" },
+        "days": {
+          "type": ["array", "null"],
+          "items": { "enum": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL"] }
+        },
+        "date": { "$ref": "#/$defs/dateOrNull" },
+        "from": { "$ref": "#/$defs/time" },
+        "to": { "$ref": "#/$defs/time" },
+        "min": { "type": "integer", "minimum": 0 },
+        "max": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "anyOf": [
+        { "required": ["date"], "properties": { "date": { "$ref": "#/$defs/date" } } },
+        { "required": ["days"], "properties": { "days": { "type": "array", "minItems": 1 } } }
+      ]
+    },
+    "holiday": {
+      "type": "object",
+      "required": ["date"],
+      "properties": {
+        "date": { "$ref": "#/$defs/date" },
+        "name": { "$ref": "#/$defs/stringOrNull" }
+      }
+    },
+    "absenceType": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/stringOrNull" },
+        "reducesTarget": { "type": "boolean" },
+        "chargesAccount": { "type": "boolean" },
+        "compensatoryRest": { "type": "boolean" },
+        "color": { "$ref": "#/$defs/stringOrNull" }
+      }
+    },
+    "familyRule": {
+      "type": "object",
+      "properties": {
+        "weekdays": { "type": ["array", "null"], "items": { "type": "integer", "minimum": 1, "maximum": 7 } },
+        "latestEnd": { "$ref": "#/$defs/timeOrNull" },
+        "earliestStart": { "$ref": "#/$defs/timeOrNull" },
+        "noNights": { "type": "boolean" },
+        "note": { "$ref": "#/$defs/stringOrNull" }
+      }
+    },
+    "person": {
+      "type": "object",
+      "required": ["id", "weeklyHours", "areaIds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "firstName": { "$ref": "#/$defs/stringOrNull" },
+        "lastName": { "$ref": "#/$defs/stringOrNull" },
+        "shortName": { "$ref": "#/$defs/stringOrNull" },
+        "weeklyHours": { "type": "number", "exclusiveMinimum": 0 },
+        "areaIds": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "hoursAccount": { "type": "number" },
+        "compRestBalance": { "type": "integer" },
+        "familyRules": { "type": ["array", "null"], "items": { "$ref": "#/$defs/familyRule" } },
+        "externalId": { "$ref": "#/$defs/stringOrNull" },
+        "entryDate": { "$ref": "#/$defs/dateOrNull" },
+        "exitDate": { "$ref": "#/$defs/dateOrNull" }
+      }
+    },
+    "restriction": {
+      "type": "object",
+      "required": ["personId", "weekday", "kind"],
+      "properties": {
+        "personId": { "$ref": "#/$defs/id" },
+        "shiftId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "category": { "anyOf": [{ "$ref": "#/$defs/category" }, { "type": "null" }] },
+        "weekday": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "kind": { "enum": ["NEVER", "ON_REQUEST"] },
+        "validFrom": { "$ref": "#/$defs/dateOrNull" },
+        "validTo": { "$ref": "#/$defs/dateOrNull" }
+      },
+      "oneOf": [
+        {
+          "required": ["shiftId"],
+          "properties": { "shiftId": { "$ref": "#/$defs/id" }, "category": { "type": "null" } }
+        },
+        {
+          "required": ["category"],
+          "properties": { "category": { "$ref": "#/$defs/category" }, "shiftId": { "type": "null" } }
+        }
+      ]
+    },
+    "historyEntry": {
+      "type": "object",
+      "required": ["personId", "month", "source"],
+      "properties": {
+        "personId": { "$ref": "#/$defs/id" },
+        "month": { "$ref": "#/$defs/month" },
+        "source": { "enum": ["import", "plan"] },
+        "nights": { "type": "integer", "minimum": 0 },
+        "weekendsWorked": { "type": "integer", "minimum": 0 },
+        "holidays": { "type": "integer", "minimum": 0 },
+        "unpopular": { "type": "integer", "minimum": 0 },
+        "wishes": { "type": "integer", "minimum": 0 },
+        "wishesMet": { "type": "integer", "minimum": 0 },
+        "hours": { "type": "number", "minimum": 0 },
+        "hoursAccountAfter": { "type": ["number", "null"] },
+        "compRestBalanceAfter": { "type": ["integer", "null"] },
+        "compRestUsed": { "type": "integer", "minimum": 0 },
+        "compRestEarned": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "period": {
+      "type": "object",
+      "required": ["month", "absences", "wishes", "fixed", "previousDuties"],
+      "properties": {
+        "month": { "$ref": "#/$defs/month" },
+        "absences": { "type": "array", "items": { "$ref": "#/$defs/absence" } },
+        "wishes": { "type": "array", "items": { "$ref": "#/$defs/wish" } },
+        "fixed": { "type": "array", "items": { "$ref": "#/$defs/fixedAssignment" } },
+        "previousDuties": { "type": "array", "items": { "$ref": "#/$defs/previousDuty" } }
+      }
+    },
+    "absence": {
+      "type": "object",
+      "required": ["personId", "date", "typeCode"],
+      "properties": {
+        "personId": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/date" },
+        "typeCode": { "$ref": "#/$defs/id" }
+      }
+    },
+    "wish": {
+      "type": "object",
+      "required": ["personId", "date", "kind"],
+      "properties": {
+        "personId": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/date" },
+        "kind": { "enum": ["OFF", "DUTY", "SHIFT", "NOT_SHIFT"] },
+        "shiftId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+      },
+      "if": { "properties": { "kind": { "enum": ["SHIFT", "NOT_SHIFT"] } } },
+      "then": { "required": ["shiftId"], "properties": { "shiftId": { "$ref": "#/$defs/id" } } }
+    },
+    "fixedAssignment": {
+      "type": "object",
+      "required": ["personId", "date"],
+      "properties": {
+        "personId": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/date" },
+        "shiftId": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+      }
+    },
+    "previousDuty": {
+      "type": "object",
+      "required": ["personId", "date", "shiftId"],
+      "properties": {
+        "personId": { "$ref": "#/$defs/id" },
+        "date": { "$ref": "#/$defs/date" },
+        "shiftId": { "$ref": "#/$defs/id" }
+      }
+    }
+  }
+}

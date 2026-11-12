@@ -1,0 +1,30 @@
+{
+  "areas": [
+    { "id": "AN", "name": "Notrufannahme", "color": "#B45309" },
+    { "id": "DR", "name": "Disposition Rettung", "color": "#15803D" },
+    { "id": "TV", "name": "Transportvermittlung", "color": "#2563EB" },
+    { "id": "LF", "name": "Lageführung", "color": "#7C3AED" },
+    { "id": "TS", "name": "Technik und Systeme", "color": "#0E7490" }
+  ],
+  "shifts": [
+    { "match": "A*", "areaId": "AN" },
+    { "match": "R*", "areaId": "DR" },
+    { "match": "V1", "areaId": "TV", "category": "EARLY" },
+    { "match": "V*", "areaId": "TV" },
+    { "match": "L*", "areaId": "LF" },
+    { "match": "S1", "areaId": "TS" }
+  ],
+  "ignoreShifts": ["X1-*", "X2", "X3", "X4"],
+  "groups": [
+    { "match": "Team Annahme", "areaIds": ["AN"] },
+    { "match": "Springer Annahme", "areaIds": ["AN"] },
+    { "match": "Team Disposition", "areaIds": ["DR"] },
+    { "match": "Team Transport", "areaIds": ["TV"] },
+    { "match": "Lageführung", "areaIds": ["LF"] },
+    { "match": "Technik", "areaIds": ["TS"] }
+  ],
+  "ignoreGroups": ["Schicht *", "Gesamt"],
+  "excludeGroups": ["Ehrenamt*", "Servicetelefon*", "Verwaltung*"],
+  "compensatoryRestAbsences": ["ER"],
+  "ignoreAbsences": []
+}
