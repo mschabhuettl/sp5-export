@@ -161,6 +161,10 @@ def table_path(folder: Path, name: str) -> Path | None:
     return None
 
 
+# Bases of the nominal hours in 5EMPL.CALCBASE.
+BASE_NAMES = {0: "Tag", 1: "Woche", 2: "Monat", 3: "gesamt"}
+
+
 def _text(value) -> str:
     return value.strip() if isinstance(value, str) else ""
 
@@ -290,7 +294,7 @@ class _Import:
                 member[a.get("EMPLOYEEID")].append(groups[a.get("GROUPID")])
         order = [a["id"] for a in self.mapping["areas"]]
         self.person_by_sp5: dict[int, dict] = {}
-        dropped = Counter()
+        dropped, bases, stale = Counter(), Counter(), 0
         for e in self.table("5EMPL", required=True):
             eid = e.get("ID")
             start, end = _date(e.get("EMPSTART")), _date(e.get("EMPEND"))
@@ -310,9 +314,14 @@ class _Import:
             if not areas:
                 dropped["ohne Bereich"] += 1
                 continue
-            hours = float(e.get("HRSWEEK") or 0)
-            if hours <= 0:
-                self.warn(f"Mitarbeiter E{eid} hat keine Wochenstunden (HRSWEEK) und wird nicht übernommen")
+            base = int(e.get("CALCBASE") or 0)
+            bases[base] += 1
+            hours = self._weekly_hours(e, base, start, end)
+            if hours is not None and base != 1 and abs(hours - float(e.get("HRSWEEK") or 0)) >= 0.005:
+                stale += 1
+            if hours is None or hours <= 0:
+                if hours is not None:
+                    self.warn(f"Mitarbeiter E{eid} hat keine Wochenstunden (CALCBASE {base}) und wird nicht übernommen")
                 dropped["ohne Wochenstunden"] += 1
                 continue
             self.employment[f"E{eid}"] = (start, end)
@@ -329,7 +338,30 @@ class _Import:
             self.warn(f"{partly} Mitarbeiter nur teilweise im Monat beschäftigt; Ein- und Austritt sind übernommen")
         for reason, n in sorted(dropped.items()):
             self.warn(f"{n} Mitarbeiter nicht übernommen ({reason})")
+        self.warn("Wochenstunden nach CALCBASE: " + ", ".join(f"{b} ({BASE_NAMES[b]}) {bases[b]}" for b in BASE_NAMES)
+                  + f"; HRSWEEK weicht bei {stale} davon ab")
         self.warn("Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)")
+
+    def _weekly_hours(self, e: dict, base: int, start: date | None, end: date | None) -> float | None:
+        """Weekly hours as SP5 computes the nominal hours (sp5lib calculations.get_nominal_hours, by CALCBASE),
+        rounded to two decimals. None when they cannot be computed (warned here)."""
+        eid = e.get("ID")
+        if base == 0:
+            days = sum(sp5calc.parse_day_mask(str(e.get("WORKDAYS") or ""), 8)[:7])
+            hours = float(e.get("HRSDAY") or 0) * days
+        elif base == 1:
+            hours = float(e.get("HRSWEEK") or 0)
+        elif base == 2:
+            hours = float(e.get("HRSMONTH") or 0) * 12 / 52
+        elif base == 3:
+            if not (start and end):
+                self.warn(f"Mitarbeiter E{eid} hat Gesamtstunden (CALCBASE 3) ohne abgeschlossene Beschäftigung"
+                          " (EMPSTART bis EMPEND) und wird nicht übernommen")
+                return None
+            hours = float(e.get("HRSTOTAL") or 0) / (((end - start).days + 1) / 7)
+        else:
+            raise Sp5Error(f"Mitarbeiter E{eid}: unbekannte Berechnungsgrundlage CALCBASE {base}")
+        return round(hours, 2)
 
     def restrictions(self) -> list[dict]:
         grades, odd = defaultdict(dict), 0

@@ -39,7 +39,7 @@ Die Ausgabedatei darf nicht im SP5-Ordner liegen. Warnungen und eine Zusammenfas
 Konsole (stderr). Bei einem Fehler endet das Programm mit Exit-Code 1 und schreibt keine Datei.
 Fehler sind unter anderem: eine Tabelle ist nicht lesbar, beschädigt oder unvollständig (die Zahl der
 Datensätze im Dateikopf passt nicht zur Datei), eine Pflichttabelle (`5EMPL`, `5SHIFT`, `5GROUP`, `5GRASG`) ist
-leer, keine Schicht oder kein Mitarbeiter wird übernommen. Texte, die nicht UTF-16 sind, werden mit der Codepage
+leer, keine Schicht oder kein Mitarbeiter wird übernommen, ein Mitarbeiter hat ein unbekanntes `CALCBASE`. Texte, die nicht UTF-16 sind, werden mit der Codepage
 aus dem Dateikopf gelesen (z. B. cp850, cp1252); eine unbekannte Codepage ist ein Fehler.
 
 Die erzeugte Datei in Dispofold unter **Import/Export** mit **"Datensatz importieren"** hochladen.
@@ -81,7 +81,11 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
 
 - **Personen:** wer nicht ausgeblendet ist (`HIDE`), im Monat beschäftigt ist (`EMPSTART`/`EMPEND`), in
   keiner `excludeGroups`-Gruppe ist, Wochenstunden hat und über `groups` mindestens einen Bereich bekommt.
-  Wochenstunden aus `HRSWEEK`. Id `E<SP5-Id>`, `externalId` ist die SP5-Id. `EMPSTART`/`EMPEND` werden
+  Wochenstunden so, wie SP5 das Soll rechnet, nach `CALCBASE`: `0` Stunden je Tag (`HRSDAY`) mal Arbeitstage
+  Montag bis Sonntag aus `WORKDAYS`, `1` `HRSWEEK`, `2` `HRSMONTH` × 12 / 52, `3` `HRSTOTAL` verteilt auf die
+  Wochen von `EMPSTART` bis `EMPEND` (ohne `EMPEND` wird die Person nicht übernommen). Gerundet auf zwei
+  Stellen. Unter `0` ist `HRSWEEK` oft veraltet und wird nicht gelesen; eine Zeile nennt, wie viele Personen
+  welche Grundlage haben und bei wie vielen `HRSWEEK` abweicht (nur Zahlen). Id `E<SP5-Id>`, `externalId` ist die SP5-Id. `EMPSTART`/`EMPEND` werden
   `entryDate`/`exitDate`; Dispofold verplant Tage außerhalb nicht und rechnet das Soll anteilig.
 - **Schichten:** Id `S<SP5-Id>`, Kürzel, Name und Farbe aus SP5. Bei Zeiten je Wochentag gilt die
   häufigste Zeit. Schichten über 12 Stunden (die Standardregel `maxDutyHours` von Dispofold) werden nicht
@@ -118,7 +122,9 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schicht 'X' (SP5-Id 3) dauert mehr als 12 Stunden (...) und wird nicht übernommen` | Zeiten in SP5 prüfen. |
 | `Gruppe ohne Zuordnung: SP5-Id 7, Kürzel 'G7'` | Gruppe in `groups`, `ignoreGroups` oder `excludeGroups` aufnehmen. |
 | `17 Mitarbeiter nicht übernommen (Grund)` | Gründe: ausgeblendet, nicht beschäftigt im Monat, ausgeschlossene Gruppe, ohne Bereich. Zahl mit dem erwarteten Personalstand vergleichen. |
-| `Mitarbeiter E12 hat keine Wochenstunden (HRSWEEK) und wird nicht übernommen` | `HRSWEEK` in SP5 nachtragen. |
+| `Mitarbeiter E12 hat keine Wochenstunden (CALCBASE 1) und wird nicht übernommen` | Die Stunden der Grundlage in SP5 nachtragen (`HRSDAY` und `WORKDAYS`, `HRSWEEK`, `HRSMONTH` oder `HRSTOTAL`). |
+| `Wochenstunden nach CALCBASE: 0 (Tag) 40, 1 (Woche) 12, ...; HRSWEEK weicht bei 25 davon ab` | Immer vorhanden. Viele Abweichungen unter `0` sind normal: SP5 rechnet dort nicht mit `HRSWEEK`. |
+| `Mitarbeiter E12 hat Gesamtstunden (CALCBASE 3) ohne abgeschlossene Beschäftigung (EMPSTART bis EMPEND) und wird nicht übernommen` | In SP5 das Austrittsdatum eintragen oder eine andere Grundlage wählen. |
 | `3 Mitarbeiter nur teilweise im Monat beschäftigt; ...` | Ein- oder Austritt im Monat. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |

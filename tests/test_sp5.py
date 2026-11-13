@@ -77,6 +77,8 @@ def test_people_and_out_of_scope(source, imported):
     assert "16 Mitarbeiter nicht übernommen (ausgeschlossene Gruppe)" in warnings
     assert "1 Mitarbeiter nicht übernommen (ausgeblendet)" in warnings
     assert "1 Mitarbeiter nicht übernommen (nicht beschäftigt im Monat)" in warnings
+    assert "Wochenstunden nach CALCBASE: 0 (Tag) 50, 1 (Woche) 50, 2 (Monat) 50, 3 (gesamt) 0; HRSWEEK weicht bei" \
+        in " ".join(warnings)
     codes = {s["code"] for s in result["shifts"]}
     assert not codes & {s[0] for s in OTHER_SHIFTS}
     assert all(int(p["externalId"]) < 5000 for p in result["people"])
@@ -432,7 +434,7 @@ def _duty_person(source, nth=0):
 def test_people_and_shifts_dispofold_would_reject_are_not_exported(source, folder, tmp_path):
     sp5 = _Sp5Copy(folder, tmp_path)
     people = sorted(int(p["externalId"]) for p in source[0]["people"])
-    sp5.update("5EMPL", people[0], HRSWEEK=0.0)
+    sp5.update("5EMPL", people[0], CALCBASE=1, HRSWEEK=0.0)
     sp5.update("5EMPL", people[1], EMPSTART="2027-01-15", EMPEND="2027-01-10")
     sp5.update("5EMPL", people[2], EMPSTART="2027-01-10")
     long_times = {"LX": "06:00-19:00", "LY": "07:00-07:00"}
@@ -444,7 +446,7 @@ def test_people_and_shifts_dispofold_would_reject_are_not_exported(source, folde
     result, warnings, _ = export(sp5.dir, MONTH, mapping, tmp_path / "dataset.json")
     ids = {p["externalId"] for p in result["people"]}
     assert str(people[0]) not in ids and str(people[1]) not in ids
-    assert f"Mitarbeiter E{people[0]} hat keine Wochenstunden (HRSWEEK) und wird nicht übernommen" in warnings
+    assert f"Mitarbeiter E{people[0]} hat keine Wochenstunden (CALCBASE 1) und wird nicht übernommen" in warnings
     assert "1 Mitarbeiter nicht übernommen (ohne Wochenstunden)" in warnings
     assert "1 Mitarbeiter nicht übernommen (Austritt vor Eintritt)" in warnings
     entry = next(p for p in result["people"] if p["externalId"] == str(people[2]))
@@ -454,6 +456,44 @@ def test_people_and_shifts_dispofold_would_reject_are_not_exported(source, folde
     assert not {"LX", "LY"} & {s["code"] for s in result["shifts"]}
     assert "Schicht 'LX' (SP5-Id 901) dauert mehr als 12 Stunden (06:00-19:00) und wird nicht übernommen" in warnings
     assert "Schicht 'LY' (SP5-Id 902) dauert mehr als 12 Stunden (07:00-07:00) und wird nicht übernommen" in warnings
+
+
+def test_weekly_hours_follow_the_calcbase(source, folder, tmp_path):
+    sp5 = _Sp5Copy(folder, tmp_path)
+    p = sorted(int(x["externalId"]) for x in source[0]["people"])
+    five, three = "1 1 1 1 1 0 0 0", "1 1 1 0 0 0 0 0"
+    cases = {
+        p[0]: (dict(CALCBASE=0, HRSDAY=4.0, WORKDAYS=five, HRSWEEK=40.0), 20.0),  # stale HRSWEEK is ignored
+        p[1]: (dict(CALCBASE=0, HRSDAY=8.0, WORKDAYS=three, HRSWEEK=40.0), 24.0),  # part time, three long days
+        p[2]: (dict(CALCBASE=0, HRSDAY=7.5, WORKDAYS="1111100", HRSWEEK=37.5), 37.5),  # compact mask
+        p[3]: (dict(CALCBASE=1, HRSDAY=1.0, WORKDAYS=five, HRSWEEK=38.5), 38.5),
+        p[4]: (dict(CALCBASE=2, HRSMONTH=130.0, HRSWEEK=40.0), 30.0),
+        p[5]: (dict(CALCBASE=3, HRSTOTAL=1500.0, EMPSTART="2027-01-01", EMPEND="2027-12-30"), 28.85),
+    }
+    for eid, (values, _) in cases.items():
+        sp5.update("5EMPL", eid, **values)
+    sp5.update("5EMPL", p[6], CALCBASE=3, HRSTOTAL=1000.0, EMPEND=None)  # open employment
+    sp5.update("5EMPL", p[7], CALCBASE=0, HRSDAY=8.0, WORKDAYS="0 0 0 0 0 0 0 1")  # holiday slot only: 0 h
+    result, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "dataset.json")
+    hours = {int(x["externalId"]): x["weeklyHours"] for x in result["people"]}
+    assert {eid: hours.get(eid) for eid in cases} == {eid: want for eid, (_, want) in cases.items()}
+    assert p[6] not in hours and p[7] not in hours
+    assert (f"Mitarbeiter E{p[6]} hat Gesamtstunden (CALCBASE 3) ohne abgeschlossene Beschäftigung"
+            " (EMPSTART bis EMPEND) und wird nicht übernommen") in warnings
+    assert f"Mitarbeiter E{p[7]} hat keine Wochenstunden (CALCBASE 0) und wird nicht übernommen" in warnings
+    assert "2 Mitarbeiter nicht übernommen (ohne Wochenstunden)" in warnings
+    summary = [w for w in warnings if w.startswith("Wochenstunden nach CALCBASE")]
+    assert len(summary) == 1 and re.match(
+        r"Wochenstunden nach CALCBASE: 0 \(Tag\) \d+, 1 \(Woche\) \d+, 2 \(Monat\) \d+, 3 \(gesamt\) \d+; "
+        r"HRSWEEK weicht bei \d+ davon ab$", summary[0])
+
+
+def test_unknown_calcbase_is_an_error(source, folder, tmp_path):
+    sp5 = _Sp5Copy(folder, tmp_path)
+    eid = min(int(x["externalId"]) for x in source[0]["people"])
+    sp5.update("5EMPL", eid, CALCBASE=7)
+    with pytest.raises(Sp5Error, match=f"Mitarbeiter E{eid}: unbekannte Berechnungsgrundlage CALCBASE 7"):
+        import_sp5(sp5.dir, MONTH, load_mapping(MAPPING))
 
 
 def test_absence_switches_follow_the_sp5_leave_type(folder, tmp_path):

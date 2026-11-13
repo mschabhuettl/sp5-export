@@ -24,7 +24,7 @@ SPECS = {
     "5EMPL": [("ID", "N", 11), ("NAME", *C_NAME), ("FIRSTNAME", *C_NAME), ("SHORTNAME", *C_SHORT),
               ("NUMBER", "C", 20), ("POSITION", "N", 11), ("HIDE", "N", 1), ("WORKDAYS", "C", 16),
               ("CALCBASE", "N", 11), ("HRSDAY", "F", 10), ("HRSWEEK", "F", 10), ("HRSMONTH", "F", 10),
-              ("EMPSTART", "D", 8), ("EMPEND", "D", 8)],
+              ("HRSTOTAL", "F", 10), ("EMPSTART", "D", 8), ("EMPEND", "D", 8)],
     "5GROUP": [("ID", "N", 11), ("NAME", *C_NAME), ("SHORTNAME", *C_SHORT), ("POSITION", "N", 11),
                ("HIDE", "N", 1), ("SUPERID", "N", 11)],
     "5GRASG": [("ID", "N", 11), ("EMPLOYEEID", "N", 11), ("GROUPID", "N", 11)],
@@ -106,6 +106,20 @@ def _bgr(color: str) -> int:
     return (b << 16) | (g << 8) | r
 
 
+def _hours_fields(hours: float, base: int, start: str, end: str | None) -> dict:
+    """5EMPL fields that give `hours` a week under CALCBASE `base`, computed the way SP5 does."""
+    days = 3 if base == 0 and hours % 3 == 0 and hours >= 30 else 5
+    fields = {"CALCBASE": base, "WORKDAYS": " ".join(["1"] * days + ["0"] * (8 - days)),
+              "HRSDAY": round(hours / days, 2), "HRSWEEK": hours, "HRSMONTH": round(hours * 52 / 12, 2),
+              "HRSTOTAL": 0.0}
+    if base == 0:
+        fields["HRSWEEK"] = 40.0  # stale: SP5 ignores HRSWEEK under base 0
+    if base == 3:
+        weeks = ((date.fromisoformat(end) - date.fromisoformat(start)).days + 1) / 7
+        fields["HRSTOTAL"] = round(hours * weeks, 2)
+    return fields
+
+
 def _hours(start: str, end: str) -> float:
     s = int(start[:2]) * 60 + int(start[3:])
     e = int(end[:2]) * 60 + int(end[3:])
@@ -147,8 +161,8 @@ def write_sp5_folder(dataset: dict, mixes: dict, folder: str | Path, special_dem
 
     def employee(eid: int, first: str, last: str, short: str, hours: float, groups: list[str], **extra) -> None:
         db.add("5EMPL", ID=eid, NAME=last, FIRSTNAME=first, SHORTNAME=short, NUMBER=str(eid), POSITION=eid,
-               HIDE=extra.get("hide", 0), WORKDAYS="1 1 1 1 1 0 0 0", CALCBASE=1, HRSDAY=round(hours / 5, 2),
-               HRSWEEK=hours, HRSMONTH=0.0, EMPSTART="2015-01-01", EMPEND=extra.get("end"))
+               HIDE=extra.get("hide", 0), EMPSTART="2015-01-01", EMPEND=extra.get("end"),
+               **_hours_fields(hours, extra.get("base", 1), "2015-01-01", extra.get("end")))
         for g in groups:
             db.add("5GRASG", EMPLOYEEID=eid, GROUPID=group_ids[g])
 
@@ -164,8 +178,10 @@ def write_sp5_folder(dataset: dict, mixes: dict, folder: str | Path, special_dem
                 groups.append("Springer Annahme")
         groups += [("Schicht A", "Schicht B", "Schicht C")[i % 3], "Gesamt"]
         emp_ids[p["id"]] = int(p["externalId"])
+        # All bases SP5 knows except 3 (it needs a closed employment): base 0 with a stale HRSWEEK, and with
+        # three long days where the hours allow it.
         employee(int(p["externalId"]), p["firstName"], p["lastName"], p["shortName"], p["weeklyHours"],
-                 list(dict.fromkeys(groups)))
+                 list(dict.fromkeys(groups)), base=(0, 1, 2)[i % 3])
     # Out of scope: service line, administration, volunteers, one hidden and one former employee.
     fallback = shift_ids.get("TV-F", next(iter(shift_ids.values())))
     eid = 5001
@@ -180,7 +196,7 @@ def write_sp5_folder(dataset: dict, mixes: dict, folder: str | Path, special_dem
             db.add("5RESTR", EMPLOYEEID=eid, WEEKDAY=2, SHIFTID=fallback, RESTRICT=2)
             eid += 1
     employee(eid, "Vorname", "Verborgen", "XVB", 40.0, ["Team Annahme"], hide=1)
-    employee(eid + 1, "Vorname", "Ehemalig", "XEH", 40.0, ["Team Disposition"], end="2025-06-30")
+    employee(eid + 1, "Vorname", "Ehemalig", "XEH", 40.0, ["Team Disposition"], end="2025-06-30", base=3)
     for short in ("X1-T", "X1-N", "X2", "X3"):
         for idx in range(8):
             db.add("5SHDEM", GROUPID=group_ids["Servicetelefon"], WEEKDAY=idx,
