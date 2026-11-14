@@ -6,6 +6,7 @@ import shutil
 import stat
 import subprocess
 import sys
+from collections import Counter
 from datetime import date
 
 import pytest
@@ -154,7 +155,11 @@ def test_restrictions_absences_previous_duties_holidays(source, imported):
 
     assert previous(result, dst_codes, dst_ext) == previous(dataset, src_codes, src_ext)
     assert result["holidays"] == dataset["holidays"]
-    assert {h["month"] for h in result["history"]} == {"2026-12"}
+    # 12 months of history, an entry for every month of employment; the duties lie in the last week only.
+    months = [f"2026-{m:02d}" for m in range(1, 13)]
+    assert sorted({h["month"] for h in result["history"]}) == months
+    assert all(sum(h["month"] == m for h in result["history"]) == len(result["people"]) for m in months)
+    assert {h["month"] for h in result["history"] if h["hours"]} == {"2026-12"}
 
 
 def test_demand_coverage_matches_every_day(source, imported):
@@ -585,11 +590,141 @@ def test_month_with_only_compensatory_rest_gets_a_history_entry(source, folder, 
     leave = {r["SHORTNAME"]: r["ID"] for r in sp5.rows("5LEAVT")}
     eid, _, _ = _duty_person(source, 0)
     pid = f"E{eid}"
+    sp5.update("5EMPL", eid, EMPSTART="2026-12-01")  # months before the entry get no entry of their own
     result, _, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "before.json")
-    assert "2026-11" not in {h["month"] for h in result["history"] if h["personId"] == pid}
+    assert {h["month"] for h in result["history"] if h["personId"] == pid} == {"2026-12"}
     for day in ("2026-11-10", "2026-11-11"):
         sp5.add("5ABSEN", EMPLOYEEID=eid, DATE=day, LEAVETYPID=leave["ER"], TYPE=0, INTERVAL=0)
     result, _, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "after.json")
     entry = next(h for h in result["history"] if h["personId"] == pid and h["month"] == "2026-11")
     assert (entry["compRestUsed"], entry["hours"], entry["nights"], entry["compRestEarned"]) == (2, 0, 0, 0)
-    assert len([h for h in result["history"] if h["month"] == "2026-11"]) == 1
+
+
+def test_every_month_of_employment_gets_a_history_entry(source, imported):
+    result = imported[0]
+    entries = Counter(h["personId"] for h in result["history"])
+    # Employed since 2015 and without duties for most of the window: still one entry per month (0 hours).
+    assert set(entries.values()) == {12}
+    quiet = next(h for h in result["history"] if h["month"] == "2026-05")
+    assert (quiet["hours"], quiet["nights"], quiet["compRestUsed"]) == (0, 0, 0)
+
+
+# ── several months, history window, areas from history ─────────────
+
+
+def _shift_of_area(result, area):
+    return int(next(s["id"] for s in result["shifts"] if s["areaId"] == area)[1:])
+
+
+def test_several_planning_months(source, folder, tmp_path):
+    sp5 = _Sp5Copy(folder, tmp_path)
+    late = max(int(p["externalId"]) for p in source[0]["people"])
+    sp5.update("5EMPL", late, EMPSTART="2027-03-01")  # employed only in the last month of the range
+    single, _, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "one.json")
+    result, warnings, proc = export(sp5.dir, MONTH, MAPPING, tmp_path / "three.json", "--to", "2027-03")
+    assert [p["month"] for p in result["periods"]] == ["2027-01", "2027-02", "2027-03"]
+    first, *later = result["periods"]
+    others = [d for d in first["previousDuties"] if d["personId"] != f"E{late}"]
+    assert others == single["periods"][0]["previousDuties"] != []
+    assert all(p["previousDuties"] == [] for p in later)  # Dispofold takes them from the plan of the month before
+    assert first["absences"] == single["periods"][0]["absences"]
+    assert all(a["date"][:7] == p["month"] for p in result["periods"] for a in p["absences"])
+    assert str(late) in {p["externalId"] for p in result["people"]}
+    assert str(late) not in {p["externalId"] for p in single["people"]}
+    # Easter Monday 2027 is in the range: holidays and dated demand cover every month.
+    assert "2027-03-29" in {h["date"] for h in result["holidays"]}
+    holidays = {h["date"] for h in result["holidays"]}
+    for area in {r["areaId"] for r in result["demand"] if r["days"] == ["HOL"]}:
+        rules = rules_for_day(result, area, date(2027, 3, 29), holidays)
+        assert rules and all(r["days"] == ["HOL"] for r in rules)
+    assert [h for h in result["history"] if h["personId"] != f"E{late}"] == single["history"]
+    assert "3 Planungsmonate" in proc.stderr
+
+
+@pytest.mark.parametrize("options, message", [
+    (("--to", "2026-12"), "Ende muss im selben Monat oder bis zu 12 Monate danach liegen"),
+    (("--to", "2028-02"), "Ende muss im selben Monat oder bis zu 12 Monate danach liegen"),
+    (("--to", "2027-13"), "ungültiger Monat"),
+    (("--history-months", "25"), "erlaubt sind 0 bis 24"),
+    (("--areas-from-history", "0"), "Mindestzahl ab 1"),
+    (("--history-months", "0", "--areas-from-history", "2"), "eine Historie"),
+])
+def test_bad_range_options(folder, tmp_path, options, message):
+    proc = run(folder, MONTH, MAPPING, tmp_path / "dataset.json", *options)
+    assert proc.returncode == 1 and message in proc.stderr
+    assert not (tmp_path / "dataset.json").exists()
+
+
+def test_history_length_is_configurable(folder, imported, tmp_path):
+    none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0")
+    assert none["history"] == []
+    long, _, _ = export(folder, MONTH, MAPPING, tmp_path / "long.json", "--history-months", "24")
+    assert min(h["month"] for h in long["history"]) == "2025-01"
+    # The default 12 months cover the 11 months before the planning month that Dispofold's 52-week average
+    # needs to be a hard rule (RosterBuilder.average): every person has an entry in each of them.
+    needed = {f"2026-{m:02d}" for m in range(2, 13)}
+    result = imported[0]
+    for p in result["people"]:
+        assert needed <= {h["month"] for h in result["history"] if h["personId"] == p["id"]}
+
+
+def test_areas_from_history(source, folder, imported, tmp_path):
+    result = imported[0]
+    sp5 = _Sp5Copy(folder, tmp_path)
+    person = next(p for p in result["people"] if p["areaIds"] == ["AN"])
+    other = next(a["id"] for a in result["areas"] if a["id"] != "AN")
+    shift = _shift_of_area(result, other)
+    for day in ("2026-10-05", "2026-10-06", "2026-10-07"):
+        sp5.add("5MASHI", EMPLOYEEID=int(person["externalId"]), SHIFTID=shift, DATE=day, WORKPLACID=0, TYPE=0)
+    # Someone in no mapped group who works shifts of an area.
+    sp5.add("5EMPL", ID=9001, NAME="Ohne", FIRSTNAME="Gruppe", SHORTNAME="XOG", NUMBER="9001", POSITION=9001,
+            HIDE=0, WORKDAYS="1 1 1 1 1 0 0 0", CALCBASE=1, HRSDAY=4.0, HRSWEEK=20.0, HRSMONTH=0.0, HRSTOTAL=0.0,
+            EMPSTART="2015-01-01")
+    for day in ("2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"):
+        sp5.add("5MASHI", EMPLOYEEID=9001, SHIFTID=shift, DATE=day, WORKPLACID=0, TYPE=0)
+
+    plain, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "plain.json")
+    assert next(p for p in plain["people"] if p["id"] == person["id"])["areaIds"] == ["AN"]
+    assert "9001" not in {p["externalId"] for p in plain["people"]}
+    report = [w for w in warnings if w.startswith(f"Bereich {other}: ")]
+    assert len(report) == 1 and report[0].startswith(f"Bereich {other}: 1 Mitarbeiter mit Diensten in den 12 Monaten")
+    assert "1 Mitarbeiter ohne Bereich aus Gruppen haben in den 12 Monaten davor zugeordnete Schichten gearbeitet" \
+        in warnings
+
+    three, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "three.json", "--areas-from-history", "3")
+    people = {p["id"]: p for p in three["people"]}
+    assert set(people[person["id"]]["areaIds"]) == {"AN", other}
+    assert people["E9001"]["areaIds"] == [other]
+    assert "Bereiche aus Diensten (mindestens 3): 2 Bereiche ergänzt, davon für 1 Mitarbeiter ohne Bereich aus " \
+        "Gruppen, die damit übernommen werden" in warnings
+
+    five, _, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "five.json", "--areas-from-history", "5")
+    people = {p["id"]: p for p in five["people"]}
+    assert people[person["id"]]["areaIds"] == ["AN"] and "E9001" not in people
+
+
+def test_report_names_ids_only(source, folder, imported, tmp_path):
+    report = tmp_path / "bericht.csv"
+    _, _, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
+    lines = report.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "person;bereich;dienste_historie;bereich_aus_gruppen"
+    rows = [line.split(";") for line in lines[1:]]
+    assert rows and all(re.match(r"E\d+$", r[0]) and r[2].isdigit() and r[3] in ("ja", "nein") for r in rows)
+    text = report.read_text(encoding="utf-8")
+    assert not any(name in text for name in _names(source[0]))
+    held = {(r[0], r[1]) for r in rows if r[3] == "ja"}
+    assert held == {(p["id"], a) for p in imported[0]["people"] for a in p["areaIds"]}
+    inside = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--report", str(folder / "bericht.csv"))
+    assert inside.returncode == 1 and "nicht im SP5-Ordner" in inside.stderr
+    same = run(folder, MONTH, MAPPING, tmp_path / "y.json", "--report", str(tmp_path / "y.json"))
+    assert same.returncode == 1 and "müssen verschieden sein" in same.stderr
+    broken = run(folder, MONTH, MAPPING, tmp_path / "z.json", "--report", str(tmp_path / "missing" / "b.csv"))
+    assert broken.returncode == 1 and "Berichtsdatei" in broken.stderr
+    assert not (tmp_path / "x.json").exists() and not (tmp_path / "y.json").exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["bericht.csv", "dataset.json"]
+
+
+def test_holiday_before_the_first_month_counts_without_history(folder, imported, tmp_path):
+    none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0")
+    assert "2026-12-25" in {h["date"] for h in none["holidays"]}
+    assert none["demand"] == imported[0]["demand"]

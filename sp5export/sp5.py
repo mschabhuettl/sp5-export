@@ -30,7 +30,9 @@ VERSION = 2
 MAX_DUTY_MINUTES = 12 * 60  # Dispofold's default maxDutyHours; longer shifts make its import fail
 
 HOLIDAY_INDEX = 7  # SP5 day index: 0 = Monday .. 6 = Sunday, 7 = public holiday
-HISTORY_MONTHS = 3
+HISTORY_MONTHS = 12  # default; Dispofold makes the 52-week average hard only with 11 months of history
+MAX_HISTORY_MONTHS = 24
+MAX_EXTRA_MONTHS = 12  # --to: at most this many months after the first planning month
 PREVIOUS_DAYS = 7
 DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
@@ -190,11 +192,16 @@ def _norm_time(t: str) -> str:
 
 
 class _Import:
-    def __init__(self, folder: Path, month: str, mapping: dict):
-        self.folder, self.month, self.mapping = folder, month, mapping
+    def __init__(self, folder: Path, months: list[str], mapping: dict, history_months: int = HISTORY_MONTHS,
+                 areas_from_history: int | None = None):
+        self.folder, self.mapping = folder, mapping
+        self.month, self.months = months[0], months
+        self.history_months, self.areas_from_history = history_months, areas_from_history
         self.warnings: list[str] = []
-        self.days = month_days(month)
+        self.days = [d for m in months for d in month_days(m)]
         self.first, self.last = self.days[0], self.days[-1]
+        self.history_start = date.fromisoformat(add_months(self.month, -history_months) + "-01")
+        self.report_rows: list[tuple[str, str, int, bool]] = []
         self._group_regular: dict = {}
         self._tables: dict[str, list[dict]] = {}
         self.employment: dict[str, tuple[date | None, date | None]] = {}
@@ -292,9 +299,10 @@ class _Import:
         for a in self.table("5GRASG", required=True):
             if groups.get(a.get("GROUPID"), "ignore") != "ignore":
                 member[a.get("EMPLOYEEID")].append(groups[a.get("GROUPID")])
-        order = [a["id"] for a in self.mapping["areas"]]
         self.person_by_sp5: dict[int, dict] = {}
-        dropped, bases, stale = Counter(), Counter(), 0
+        self.no_area: dict[int, tuple[dict, date | None, date | None]] = {}
+        dropped = self.dropped = Counter()
+        self.bases, self.stale = Counter(), 0
         for e in self.table("5EMPL", required=True):
             eid = e.get("ID")
             start, end = _date(e.get("EMPSTART")), _date(e.get("EMPEND"))
@@ -312,34 +320,41 @@ class _Import:
                 continue
             areas = set().union(*member[eid]) if member[eid] else set()
             if not areas:
-                dropped["ohne Bereich"] += 1
+                self.no_area[eid] = (e, start, end)  # decided after the history (areas_from_history)
                 continue
-            base = int(e.get("CALCBASE") or 0)
-            bases[base] += 1
-            hours = self._weekly_hours(e, base, start, end)
-            if hours is not None and base != 1 and abs(hours - float(e.get("HRSWEEK") or 0)) >= 0.005:
-                stale += 1
-            if hours is None or hours <= 0:
-                if hours is not None:
-                    self.warn(f"Mitarbeiter E{eid} hat keine Wochenstunden (CALCBASE {base}) und wird nicht übernommen")
-                dropped["ohne Wochenstunden"] += 1
-                continue
-            self.employment[f"E{eid}"] = (start, end)
-            self.person_by_sp5[eid] = {
-                "id": f"E{eid}", "firstName": _text(e.get("FIRSTNAME")), "lastName": _text(e.get("NAME")),
-                "shortName": _text(e.get("SHORTNAME")), "weeklyHours": hours,
-                "areaIds": [a for a in order if a in areas], "hoursAccount": 0.0, "compRestBalance": 0,
-                "familyRules": [], "externalId": str(eid),
-                "entryDate": start.isoformat() if start else None, "exitDate": end.isoformat() if end else None,
-            }
+            self._add_person(e, start, end, areas)
+
+    def _add_person(self, e: dict, start: date | None, end: date | None, areas: set[str]) -> None:
+        eid = e.get("ID")
+        base = int(e.get("CALCBASE") or 0)
+        self.bases[base] += 1
+        hours = self._weekly_hours(e, base, start, end)
+        if hours is not None and base != 1 and abs(hours - float(e.get("HRSWEEK") or 0)) >= 0.005:
+            self.stale += 1
+        if hours is None or hours <= 0:
+            if hours is not None:
+                self.warn(f"Mitarbeiter E{eid} hat keine Wochenstunden (CALCBASE {base}) und wird nicht übernommen")
+            self.dropped["ohne Wochenstunden"] += 1
+            return
+        self.employment[f"E{eid}"] = (start, end)
+        self.person_by_sp5[eid] = {
+            "id": f"E{eid}", "firstName": _text(e.get("FIRSTNAME")), "lastName": _text(e.get("NAME")),
+            "shortName": _text(e.get("SHORTNAME")), "weeklyHours": hours,
+            "areaIds": [a["id"] for a in self.mapping["areas"] if a["id"] in areas], "hoursAccount": 0.0,
+            "compRestBalance": 0, "familyRules": [], "externalId": str(eid),
+            "entryDate": start.isoformat() if start else None, "exitDate": end.isoformat() if end else None,
+        }
+
+    def _people_summary(self) -> None:
         partly = sum(1 for start, end in self.employment.values()
                      if (start and start > self.first) or (end and end < self.last))
         if partly:
             self.warn(f"{partly} Mitarbeiter nur teilweise im Monat beschäftigt; Ein- und Austritt sind übernommen")
-        for reason, n in sorted(dropped.items()):
+        for reason, n in sorted(self.dropped.items()):
             self.warn(f"{n} Mitarbeiter nicht übernommen ({reason})")
-        self.warn("Wochenstunden nach CALCBASE: " + ", ".join(f"{b} ({BASE_NAMES[b]}) {bases[b]}" for b in BASE_NAMES)
-                  + f"; HRSWEEK weicht bei {stale} davon ab")
+        self.warn("Wochenstunden nach CALCBASE: "
+                  + ", ".join(f"{b} ({BASE_NAMES[b]}) {self.bases[b]}" for b in BASE_NAMES)
+                  + f"; HRSWEEK weicht bei {self.stale} davon ab")
         self.warn("Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)")
 
     def _weekly_hours(self, e: dict, base: int, start: date | None, end: date | None) -> float | None:
@@ -390,7 +405,7 @@ class _Import:
             self.warn(f"{odd} Einschränkungen ohne gültigen Grad (RESTRICT) als 'nie' übernommen")
         return result
 
-    def absences(self) -> tuple[list[dict], list[dict]]:
+    def absence_types(self) -> list[dict]:
         compensatory = self.mapping.get("compensatoryRestAbsences", [])
         ignore = self.mapping.get("ignoreAbsences", [])
         types = {}
@@ -408,7 +423,12 @@ class _Import:
                 "compensatoryRest": _any(compensatory, code),
                 "color": bgr_to_hex(color) if isinstance(color, int) and color > 0 else DEFAULT_ABSENCE_COLOR,
             }
-        self.absence_types = types
+        self.absence_by_sp5 = types
+        codes = list(dict.fromkeys(t["code"] for t in types.values()))
+        return [next(t for t in types.values() if t["code"] == c) for c in codes]
+
+    def absences(self) -> list[dict]:
+        types = self.absence_by_sp5
         seen, result, double = set(), [], 0
         for a in self.table("5ABSEN"):
             person, kind, day = self.person_by_sp5.get(a.get("EMPLOYEEID")), types.get(a.get("LEAVETYPID")), \
@@ -426,16 +446,15 @@ class _Import:
             result.append({"personId": key[0], "date": key[1], "typeCode": kind["code"]})
         if double:
             self.warn(f"{double} weitere Abwesenheiten am selben Tag ignoriert")
-        codes = list(dict.fromkeys(t["code"] for t in types.values()))
-        absence_types = [next(t for t in types.values() if t["code"] == c) for c in codes]
-        return absence_types, sorted(result, key=lambda x: (x["personId"], x["date"]))
+        return sorted(result, key=lambda x: (x["personId"], x["date"]))
 
-    def _absent(self, start: date, end: date, compensatory: bool = False) -> set[tuple[str, date]]:
+    def _absent(self, start: date, end: date, compensatory: bool = False,
+                people: dict[int, dict] | None = None) -> set[tuple[str, date]]:
         """(person id, date) of full-day absences of exported types in [start, end]."""
-        result = set()
+        result, people = set(), self.person_by_sp5 if people is None else people
         for a in self.table("5ABSEN"):
-            person, kind, d = self.person_by_sp5.get(a.get("EMPLOYEEID")), \
-                self.absence_types.get(a.get("LEAVETYPID")), _date(a.get("DATE"))
+            person, kind, d = people.get(a.get("EMPLOYEEID")), \
+                self.absence_by_sp5.get(a.get("LEAVETYPID")), _date(a.get("DATE"))
             if person and kind and d and start <= d <= end and not a.get("INTERVAL") \
                     and (kind["compensatoryRest"] or not compensatory):
                 result.add((person["id"], d))
@@ -444,7 +463,8 @@ class _Import:
     def holidays(self) -> tuple[list[dict], set[str]]:
         """Full public holidays for the dataset, and all SP5 holiday dates (half days included), which
         SP5 uses for the holiday demand slot."""
-        years = range(int(add_months(self.month, -HISTORY_MONTHS)[:4]), self.first.year + 1)
+        # From the history (or at least the day before the first month: night demand crosses midnight).
+        years = range(min(self.history_start, self.first - timedelta(days=1)).year, self.last.year + 1)
         full, sp5_dates = {}, set()
         for h in self.table("5HOLID"):
             d = _date(h.get("DATE"))
@@ -564,9 +584,13 @@ class _Import:
 
     # ── duties ───────────────────────────────────────────────
 
-    def duties(self, start: date, end: date) -> list[tuple[str, date, dict]]:
-        """(person id, date, shift) from 5MASHI and 5SPSHI in [start, end], in-scope only."""
+    def duties(self, start: date, end: date, people: dict[int, dict] | None = None,
+               quiet: bool = False) -> list[tuple[str, date, dict]]:
+        """(person id, date, shift) from 5MASHI and 5SPSHI in [start, end], in-scope only. `people` replaces the
+        exported people (SP5 id -> person); `quiet` leaves out the warnings (a second pass over the same days)."""
         result, unknown = {}, 0
+        people = self.person_by_sp5 if people is None else people
+        warn = (lambda text: None) if quiet else self.warn
         # 5SPSHI rows with a shift replace the duty of the day (sp5lib: _replaced_days, get_schedule), whatever
         # their TYPE; sp5lib counts them as work time, only its staffing count leaves TYPE != 0 out, and the
         # meaning of TYPE is not documented. Rows without a shift carry their own times and have no shift here.
@@ -575,10 +599,10 @@ class _Import:
         replaced = {id(r) for r in rows}
         other_type = sum(1 for r in rows if r.get("TYPE"))
         if other_type:
-            self.warn(f"{other_type} Sonderdienste {start}..{end} (5SPSHI) mit TYPE ungleich 0 als Dienst übernommen")
+            warn(f"{other_type} Sonderdienste {start}..{end} (5SPSHI) mit TYPE ungleich 0 als Dienst übernommen")
         without_shift = len(special) - len(rows)
         if without_shift:
-            self.warn(f"{without_shift} Sonderdienste {start}..{end} (5SPSHI) ohne Schicht nicht übernommen")
+            warn(f"{without_shift} Sonderdienste {start}..{end} (5SPSHI) ohne Schicht nicht übernommen")
         # Then the actual plan (5MASHI TYPE 1 is the target plan), then cycle duties.
         rows += [r for r in self.table("5MASHI") if r.get("TYPE") != 1]
         rows += sp5calc.expand_cycle_assignments(
@@ -587,7 +611,7 @@ class _Import:
             cycle_exceptions=self.table("5CYEXC", optional=True), von=start, bis=end)
         for r in rows:
             d = _date(r.get("DATE"))
-            person = self.person_by_sp5.get(r.get("EMPLOYEEID"))
+            person = people.get(r.get("EMPLOYEEID"))
             if d is None or person is None or not start <= d <= end:
                 continue
             shift = self.shift_by_sp5.get(r.get("SHIFTID"))
@@ -599,12 +623,12 @@ class _Import:
             result.setdefault((person["id"], d), shift)
         result = {k: s for k, s in result.items() if s is not None}
         if unknown:
-            self.warn(f"{unknown} Dienste {start}..{end} mit nicht zugeordneter Schicht ignoriert")
+            warn(f"{unknown} Dienste {start}..{end} mit nicht zugeordneter Schicht ignoriert")
         # A full-day absence (5ABSEN) wins over a duty of the same day: SP5 shows both as a conflict, and the
         # dataset has no absences outside the planning month to show it there.
-        absent = self._absent(start, end) & result.keys()
+        absent = self._absent(start, end, people=people) & result.keys()
         if absent:
-            self.warn(f"{len(absent)} Dienste {start}..{end} an Tagen mit ganztägiger Abwesenheit nicht übernommen")
+            warn(f"{len(absent)} Dienste {start}..{end} an Tagen mit ganztägiger Abwesenheit nicht übernommen")
         return [(pid, d, s) for (pid, d), s in sorted(result.items(), key=lambda x: (x[0][0], x[0][1]))
                 if (pid, d) not in absent]
 
@@ -614,7 +638,7 @@ class _Import:
         return d is not None and start <= d <= end
 
     def history(self, holiday_dates: set[str]) -> list[dict]:
-        start = date.fromisoformat(add_months(self.month, -HISTORY_MONTHS) + "-01")
+        start = self.history_start
         counters = defaultdict(lambda: {"nights": 0, "weekends": set(), "holidays": 0, "unpopular": 0,
                                         "hours": 0.0, "earned": 0})
         for pid, d, s in self.duties(start, self.first - timedelta(days=1)):
@@ -630,11 +654,16 @@ class _Import:
         comp_rest = Counter((pid, d.isoformat()[:7])
                             for pid, d in self._absent(start, self.first - timedelta(days=1), compensatory=True))
         result = []
-        for k in range(HISTORY_MONTHS, 0, -1):
+        for k in range(self.history_months, 0, -1):
             m = add_months(self.month, -k)
+            days = month_days(m)
             for p in self.person_by_sp5.values():
-                # An entry whenever the month has a value: duties or compensatory rest taken.
-                if (p["id"], m) not in counters and not comp_rest[(p["id"], m)]:
+                # An entry for every month the person was employed in (also without duties: SP5 is the actual
+                # record, so no duty means 0 hours), or that has a value. Dispofold's 52-week average is a hard
+                # rule only for people with an entry in each of its months.
+                entry, leave = self.employment[p["id"]]
+                employed = (entry is None or entry <= days[-1]) and (leave is None or leave >= days[0])
+                if not employed and (p["id"], m) not in counters and not comp_rest[(p["id"], m)]:
                     continue
                 c = counters[(p["id"], m)]
                 # Actual values from SP5 (source "import"); SP5 has no hours account or compensatory-rest
@@ -648,15 +677,65 @@ class _Import:
                                "compRestEarned": c["earned"]})
         return result
 
+    # ── areas from history ───────────────────────────────────
+
+    def areas_from_duties(self) -> None:
+        """Compare the areas from groups with the areas worked in the history window (counts only), add areas
+        with at least `areas_from_history` duties, and decide about the people without an area from groups."""
+        candidates = {eid: {"id": f"E{eid}", "areaIds": []} for eid in self.no_area}
+        people = {**self.person_by_sp5, **candidates}
+        counts: Counter = Counter()
+        if self.history_months:
+            for pid, _, s in self.duties(self.history_start, self.first - timedelta(days=1), people, quiet=True):
+                counts[(pid, s["areaId"])] += 1
+        areas = [a["id"] for a in self.mapping["areas"]]
+        group = {p["id"]: set(p["areaIds"]) for p in people.values()}
+        for p in people.values():
+            for a in areas:
+                if counts[(p["id"], a)] or a in group[p["id"]]:
+                    self.report_rows.append((p["id"], a, counts[(p["id"], a)], a in group[p["id"]]))
+        months = self.history_months
+        if months:
+            exported = [p["id"] for p in self.person_by_sp5.values()]
+            for a in areas:
+                worked = sum(1 for pid in exported if counts[(pid, a)] and a not in group[pid])
+                idle = sum(1 for pid in exported if a in group[pid] and not counts[(pid, a)])
+                self.warn(f"Bereich {a}: {worked} Mitarbeiter mit Diensten in den {months} Monaten davor ohne den "
+                          f"Bereich aus Gruppen, {idle} mit dem Bereich aus Gruppen ohne Dienst darin")
+            loose = sum(1 for c in candidates.values() if any(counts[(c["id"], a)] for a in areas))
+            self.warn(f"{loose} Mitarbeiter ohne Bereich aus Gruppen haben in den {months} Monaten davor "
+                      "zugeordnete Schichten gearbeitet")
+        n, added, extra = self.areas_from_history, 0, 0
+        if n:
+            for p in self.person_by_sp5.values():
+                more = {a for a in areas if counts[(p["id"], a)] >= n} - group[p["id"]]
+                if more:
+                    added += len(more)
+                    p["areaIds"] = [a for a in areas if a in group[p["id"]] | more]
+        for eid, (e, start, end) in self.no_area.items():
+            worked = {a for a in areas if n and counts[(f"E{eid}", a)] >= n}
+            if not worked:
+                self.dropped["ohne Bereich"] += 1
+                continue
+            self._add_person(e, start, end, worked)
+            added += len(worked) if eid in self.person_by_sp5 else 0
+            extra += eid in self.person_by_sp5
+        if n:
+            self.warn(f"Bereiche aus Diensten (mindestens {n}): {added} Bereiche ergänzt, davon für {extra} "
+                      "Mitarbeiter ohne Bereich aus Gruppen, die damit übernommen werden")
+
     def run(self) -> dict:
         self.shifts()
         if not self.shift_by_sp5:
             raise Sp5Error("keine Schicht übernommen; Zuordnung 'shifts' und 'ignoreShifts' prüfen")
         self.people()
+        absence_types = self.absence_types()
+        self.areas_from_duties()
+        self._people_summary()
         if not self.person_by_sp5:
             raise Sp5Error("kein Mitarbeiter übernommen; Zuordnung 'groups' und 'excludeGroups' prüfen")
         restrictions = self.restrictions()
-        absence_types, absences = self.absences()
+        absences = self.absences()
         holidays, sp5_holiday_dates = self.holidays()
         holiday_dates = {h["date"] for h in holidays}
         demand = self.demand(sp5_holiday_dates, holiday_dates)
@@ -665,7 +744,8 @@ class _Import:
                                                  self.first - timedelta(days=1))]
         history = self.history(holiday_dates)
         people = sorted(self.person_by_sp5.values(), key=lambda p: int(p["externalId"]))
-        log.info("SP5 import %s: %d people, %d shifts, %d demand rules, %d warnings", self.month, len(people),
+        log.info("SP5 import %s..%s: %d people, %d shifts, %d demand rules, %d warnings", self.month,
+                 self.months[-1], len(people),
                  len(self.shift_by_sp5), len(demand), len(self.warnings))
         return {
             "format": FORMAT, "version": VERSION, "source": "sp5",
@@ -673,17 +753,35 @@ class _Import:
             "shifts": sorted(self.shift_by_sp5.values(), key=lambda s: int(s["id"][1:])),
             "demand": demand, "holidays": holidays, "absenceTypes": absence_types, "people": people,
             "restrictions": restrictions, "history": history,
-            "periods": [{"month": self.month, "absences": absences, "wishes": [], "fixed": [],
-                         "previousDuties": previous}],
+            # Previous duties only for the first month: Dispofold takes those of a later month from the saved
+            # plan of the month before it.
+            "periods": [{"month": m, "absences": [a for a in absences if a["date"][:7] == m], "wishes": [],
+                         "fixed": [], "previousDuties": previous if m == self.month else []} for m in self.months],
         }
 
 
-def import_sp5(folder: str | Path, month: str, mapping: dict) -> tuple[dict, list[str]]:
-    """Read the SP5 folder (never written) and return the dataset of the month and the warnings."""
+def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = None,
+               history_months: int = HISTORY_MONTHS, areas_from_history: int | None = None,
+               report: list | None = None) -> tuple[dict, list[str]]:
+    """Read the SP5 folder (never written) and return the dataset of the months `month`..`to` and the warnings.
+    `report` (a list) receives one row (person id, area, duties in the history window, area from groups) per
+    person and area worked or held."""
     validate_mapping(mapping)
+    months = [month]
+    while to and months[-1] < to:
+        months.append(add_months(months[-1], 1))
+    if (to and to < month) or len(months) > MAX_EXTRA_MONTHS + 1:
+        raise Sp5Error(f"Zeitraum {month} bis {to}: Ende muss im selben Monat oder bis zu {MAX_EXTRA_MONTHS} "
+                       "Monate danach liegen")
+    if not 0 <= history_months <= MAX_HISTORY_MONTHS:
+        raise Sp5Error(f"Historie {history_months} Monate: erlaubt sind 0 bis {MAX_HISTORY_MONTHS}")
+    if areas_from_history is not None and (areas_from_history < 1 or not history_months):
+        raise Sp5Error("Bereiche aus Diensten brauchen eine Mindestzahl ab 1 und eine Historie")
     folder = Path(folder)
     if not folder.is_dir():
         raise Sp5Error(f"SP5-Ordner nicht gefunden: {folder}")
-    job = _Import(folder, month, mapping)
+    job = _Import(folder, months, mapping, history_months, areas_from_history)
     dataset = job.run()
+    if report is not None:
+        report.extend(sorted(job.report_rows, key=lambda r: (int(r[0][1:]), r[1])))
     return dataset, job.warnings

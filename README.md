@@ -1,6 +1,6 @@
 # sp5-export
 
-Kommandozeilenwerkzeug, das einen Planungsmonat aus einem Schichtplaner5-Datenordner (SP5) liest und als
+Kommandozeilenwerkzeug, das einen oder mehrere Planungsmonate aus einem Schichtplaner5-Datenordner (SP5) liest und als
 **eine** JSON-Datei im Datensatzformat von Dispofold (`dispofold/dataset`, Version 2)
 schreibt. Der SP5-Ordner wird nur gelesen (alle Tabellen werden im Modus `rb` geöffnet), nie verändert.
 Kein Dienst, kein Server, kein Docker.
@@ -34,6 +34,46 @@ Windows (Eingabeaufforderung oder PowerShell; Laufwerksbuchstabe oder UNC-Pfad):
 py -3 sp5_export.py --data "S:\SP5\Daten" --month 2027-01 --mapping mapping.json --out dataset-2027-01.json
 py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mapping.json --out dataset-2027-01.json
 ```
+
+### Optionen
+
+| Option | Bedeutung |
+|---|---|
+| `--to YYYY-MM` | letzter Planungsmonat (höchstens 12 Monate nach `--month`). Der Datensatz hat dann je Monat einen Planungsmonat mit dessen Abwesenheiten; Bedarf und Feiertage gelten für alle Monate. Übernommen wird, wer in mindestens einem der Monate beschäftigt ist. |
+| `--history-months N` | Monate Historie vor `--month`, 0 bis 24, Standard 12 |
+| `--areas-from-history N` | ergänzt Bereiche, in denen jemand in der Historie mindestens N Dienste hatte (siehe unten) |
+| `--report DATEI` | CSV mit SP5-Ids (siehe unten) |
+
+Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
+gespeicherten Plan des Monats davor; ist der noch nicht geplant, beginnt der Monat ohne Vormonatsdienste.
+
+Mit 12 Monaten Historie wird in Dispofold die Durchrechnung (52 Wochen, `averageWeekHours`) zur harten Regel:
+Dispofold verlangt dafür je Person einen Historieneintrag in jedem der 11 Monate vor dem Planungsmonat. Mit
+weniger Historie zeigt Dispofold den Durchschnitt nur an.
+
+### Bereiche aus der Historie
+
+Die Bereiche einer Person kommen aus ihren SP5-Gruppen (`groups`). Fehlt dort eine Zuordnung, plant Dispofold
+die Person für Bereiche, in denen sie tatsächlich arbeitet, nicht ein. Deshalb vergleicht der Export bei
+jedem Lauf die Dienste der Historie (nur Schichten mit Bereich, Sonderdienste wie oben) mit den Bereichen aus
+Gruppen und meldet auf stderr nur Zahlen, nie Namen:
+
+- je Bereich: wie viele mit Diensten darin, aber ohne den Bereich aus Gruppen; wie viele mit dem Bereich aus
+  Gruppen, aber ohne Dienst darin;
+- wie viele ohne Bereich aus Gruppen zugeordnete Schichten gearbeitet haben.
+
+`--areas-from-history N` gibt jeder Person zusätzlich die Bereiche, in denen sie in der Historie mindestens
+N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wenn sie N erreichen.
+`--report bericht-2027-01.csv` schreibt dazu je Person und Bereich eine Zeile `E<SP5-Id>;Bereich;Dienste;ja|nein`
+(ja = Bereich aus Gruppen), damit sich die Personen in SP5 nachschlagen lassen. Die Datei enthält keine
+Namen, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
+
+Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
+Zuordnung vergleichen und die Zuordnung oder die Gruppen in SP5 korrigieren.
+
+Ausbildungsdienste zählen nicht, wenn ihre Schichten wie vorgesehen in `ignoreShifts` stehen: Sie haben dann
+keinen Bereich. Bewusst nicht aus der Historie abgeleitet werden Wünsche,
+Einschränkungen und bevorzugte Schichtarten: Gewohnheiten der Vergangenheit sind keine Regeln.
 
 Die Ausgabedatei darf nicht im SP5-Ordner liegen. Warnungen und eine Zusammenfassung erscheinen auf der
 Konsole (stderr). Bei einem Fehler endet das Programm mit Exit-Code 1 und schreibt keine Datei.
@@ -79,8 +119,9 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
 
 ## Was übernommen wird
 
-- **Personen:** wer nicht ausgeblendet ist (`HIDE`), im Monat beschäftigt ist (`EMPSTART`/`EMPEND`), in
-  keiner `excludeGroups`-Gruppe ist, Wochenstunden hat und über `groups` mindestens einen Bereich bekommt.
+- **Personen:** wer nicht ausgeblendet ist (`HIDE`), in einem der Planungsmonate beschäftigt ist
+  (`EMPSTART`/`EMPEND`), in keiner `excludeGroups`-Gruppe ist, Wochenstunden hat und über `groups` (oder
+  `--areas-from-history`) mindestens einen Bereich bekommt.
   Wochenstunden so, wie SP5 das Soll rechnet, nach `CALCBASE`: `0` Stunden je Tag (`HRSDAY`) mal Arbeitstage
   Montag bis Sonntag aus `WORKDAYS`, `1` `HRSWEEK`, `2` `HRSMONTH` × 12 / 52, `3` `HRSTOTAL` verteilt auf die
   Wochen von `EMPSTART` bis `EMPEND` (ohne `EMPEND` wird die Person nicht übernommen). Gerundet auf zwei
@@ -99,11 +140,11 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
 - **Bedarf** (`5SHDEM`, `5SPDEM`): je Bereich in Zeitfenster umgerechnet, Feiertage als `HOL`, Sonderbedarf
   und abweichende Tage als Regeln mit Datum.
 - **Feiertage** aus `5HOLID` (nur ganztägige); fehlen sie, die österreichischen gesetzlichen Feiertage.
-- **Vormonatsdienste** der letzten 7 Tage und **Historie** der drei Vormonate aus `5SPSHI`, `5MASHI`
+- **Vormonatsdienste** der letzten 7 Tage und **Historie** der Monate vor dem ersten Planungsmonat (Standard 12, `--history-months`) aus `5SPSHI`, `5MASHI`
   (Istplan) und den Dienstzyklen. Ein Sonderdienst (`5SPSHI`) mit Schicht ersetzt den Dienst des Tages, gleich
   welcher `TYPE` und auch dann, wenn seine Schicht nicht übernommen wird (wie in sp5lib; die Bedeutung von `TYPE` ist nicht dokumentiert, daher eine Warnung). An Tagen
   mit ganztägiger Abwesenheit (`5ABSEN`, `INTERVAL` 0) gilt kein Dienst; SP5 zeigt beides als Konflikt, der
-  Datensatz kennt keine Abwesenheiten außerhalb des Planungsmonats. Historieneinträge (je Person und Monat mit Diensten oder Ersatzruhe) haben `source` `import`;
+  Datensatz kennt keine Abwesenheiten außerhalb des Planungsmonats. Historieneinträge (je Person und Monat, in dem sie beschäftigt war, auch ohne Dienst mit 0 Stunden, oder mit Diensten oder Ersatzruhe) haben `source` `import`;
   `compRestUsed` zählt ganztägige Ersatzruhe-Abwesenheiten, `compRestEarned` die Feiertagsdienste, die nicht auf
   einen Sonntag fallen (Standardregel von Dispofold).
 - **Nicht aus SP5:** Stundenkonto und offene Ersatzruhetage (beide 0, in der Historie `null`),
@@ -126,6 +167,8 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Wochenstunden nach CALCBASE: 0 (Tag) 40, 1 (Woche) 12, ...; HRSWEEK weicht bei 25 davon ab` | Immer vorhanden. Viele Abweichungen unter `0` sind normal: SP5 rechnet dort nicht mit `HRSWEEK`. |
 | `Mitarbeiter E12 hat Gesamtstunden (CALCBASE 3) ohne abgeschlossene Beschäftigung (EMPSTART bis EMPEND) und wird nicht übernommen` | In SP5 das Austrittsdatum eintragen oder eine andere Grundlage wählen. |
 | `3 Mitarbeiter nur teilweise im Monat beschäftigt; ...` | Ein- oder Austritt im Monat. |
+| `Bereich AN: 2 Mitarbeiter mit Diensten in den 12 Monaten davor ohne den Bereich aus Gruppen, 5 mit ...` | Immer vorhanden (außer ohne Historie); siehe [Bereiche aus der Historie](#bereiche-aus-der-historie). |
+| `Bereiche aus Diensten (mindestens 3): ...` | Nur mit `--areas-from-history`: wie viele Bereiche ergänzt und wie viele Personen dadurch übernommen wurden. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
 | `... Einschränkungen nur für Feiertage nicht übernommen` | Das Datenformat kennt keine Feiertagseinschränkung. |
