@@ -232,7 +232,7 @@ class _Import:
         self.first, self.last = self.days[0], self.days[-1]
         self.history_start = date.fromisoformat(add_months(self.month, -history_months) + "-01")
         # (check, person, area, shift code, duties, area from groups, restriction[, day type, peak from history,
-        # peak from SP5, duties left out])
+        # peak from SP5, duties left out, hours, ..., reason, SP5 shift id, CALCBASE, HRSWEEK, CALCBASE hours])
         self.report_rows: list[tuple] = []
         self.shift_counts: Counter = Counter()  # (person id, shift id) -> duties in the history window
         self._group_regular: dict = {}
@@ -1127,7 +1127,10 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     areas, check "bedarf" per area and day type (no person; duties counted and left out because the person is not
     exported), checks "nicht_zugeordnet" and "ignoriert" per shift without an area (no person; duties and hours),
     check "person" per exported person (duties in the history window and the appended columns weekly hours, areas,
-    shift mix per category and per area, on-request restrictions).
+    shift mix per category and per area, on-request restrictions), check "verworfen" per reason and shift of the
+    dropped duties of the history window (shift code, duties, hours, reason, SP5 shift id; see dropped_report),
+    check "wochenstunden" per person whose HRSWEEK differs from the CALCBASE hours (weekly hours written, empty
+    when not exported; CALCBASE, HRSWEEK, CALCBASE hours).
     `demand` "history" takes the demand from the staffing in the history window, "sp5" from the SP5 demand.
     `mix_min_duties` N gives everyone with at least N counted duties in the history window a shift mix; None
     writes none."""

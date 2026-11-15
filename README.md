@@ -79,7 +79,7 @@ person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;
 schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;
 nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;
 verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;
-wochenstunden;E12;;;;;;;;;;;;30.0;;;;;;;2;40.0;30.0
+wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0
 ```
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
@@ -143,7 +143,7 @@ Wie die Zahlen zusammenpassen:
   Einträge desselben Tags und Einträge an Tagen mit ganztägiger Abwesenheit. Die ersten fünf Gründe teilen
   genau diese Einträge auf; ihre Summe steht in der Zeile `zusammen` und ist die Zahl dieser Warnung (für das
   Fenster der Historie; die Warnung gibt es noch einmal für die Vormonatsdienste der letzten 7 Tage, die hier
-  nicht gezählt werden).
+  nicht gezählt werden). Ist die Summe 0, fehlt diese Warnung.
 - `nicht zugeordnet` und `ignoriert` sind genau die Dienste der Meldung
   [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich): je Person und Tag der erste Eintrag,
   wenn der Tag keinen übernommenen Dienst und keine ganztägige Abwesenheit hat. Ausgeblendete und zu lange

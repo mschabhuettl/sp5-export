@@ -42,7 +42,8 @@ def main(argv: list[str] | None = None) -> int:
                              f"{MIX_MIN_DUTIES})")
     parser.add_argument("--no-shift-mix", action="store_true", help="keinen Schichtmix schreiben")
     parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter, "
-                                         "Bedarf je Bereich und Tagestyp, eine Zeile je Mitarbeiter")
+                                         "Bedarf je Bereich und Tagestyp, eine Zeile je Mitarbeiter, verworfene "
+                                         "Dienste je Grund, abweichende Wochenstunden")
     parser.add_argument("--mapping", required=True, help="Zuordnungsdatei (JSON)")
     parser.add_argument("--out", required=True, help="Ausgabedatei (JSON)")
     args = parser.parse_args(argv)
