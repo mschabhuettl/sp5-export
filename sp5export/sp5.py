@@ -40,6 +40,9 @@ TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
 DEMAND_SOURCES = ("history", "sp5")
 REPORT_COLUMNS = 13
 MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
+# Duties in the planning months on shifts in ignoreShifts become absences of this type (only when there are any).
+IGNORED_SHIFT_ABSENCE = {"code": "EXT", "name": "Sonstiger Dienst (ignorierte Schicht)", "reducesTarget": True,
+                         "chargesAccount": False, "compensatoryRest": False, "color": DEFAULT_ABSENCE_COLOR}
 
 
 class Sp5Error(Exception):
@@ -73,7 +76,7 @@ def validate_mapping(mapping) -> None:
     if not isinstance(mapping, dict):
         raise Sp5Error("die Zuordnung muss ein JSON-Objekt sein")
     errors = []
-    for key in sorted(set(mapping) - {"areas", "shifts", "groups", *PATTERN_LISTS}):
+    for key in sorted(set(mapping) - {"areas", "shifts", "groups", "ignoreShiftsAsAbsence", *PATTERN_LISTS}):
         errors.append(f"unbekannter Schlüssel '{key}'")
     for key in ("areas", "shifts", "groups"):
         if key not in mapping:
@@ -81,6 +84,8 @@ def validate_mapping(mapping) -> None:
     for key in ("areas", "shifts", "groups", *PATTERN_LISTS):
         if key in mapping and not isinstance(mapping[key], list):
             errors.append(f"'{key}' muss eine Liste sein")
+    if "ignoreShiftsAsAbsence" in mapping and not isinstance(mapping["ignoreShiftsAsAbsence"], bool):
+        errors.append("'ignoreShiftsAsAbsence' muss true oder false sein")
     areas = mapping.get("areas") if isinstance(mapping.get("areas"), list) else []
     shifts = mapping.get("shifts") if isinstance(mapping.get("shifts"), list) else []
     groups = mapping.get("groups") if isinstance(mapping.get("groups"), list) else []
@@ -472,6 +477,33 @@ class _Import:
         if double:
             self.warn(f"{double} weitere Abwesenheiten am selben Tag ignoriert")
         return sorted(result, key=lambda x: (x["personId"], x["date"]))
+
+    def ignored_duty_absences(self, absences: list[dict], types: list[dict]) -> list[dict]:
+        """Absences of type IGNORED_SHIFT_ABSENCE for the duties in the planning months on shifts in ignoreShifts,
+        read like the history: not on days with a full-day absence or a mapped duty, nor on days that already
+        have an absence or are outside the employment. One warning per month with such days."""
+        if not self.mapping.get("ignoreShiftsAsAbsence", True):
+            return []
+        lost: dict = {}
+        self.duties(self.first, self.last, quiet=True, lost=lost)
+        taken = {(a["personId"], a["date"]) for a in absences}
+        code, result, per_month = IGNORED_SHIFT_ABSENCE["code"], [], defaultdict(lambda: [0, 0.0])
+        for (pid, d), sp5_id in sorted(lost.items()):
+            _, why, hours = self.without_area[sp5_id]
+            start, end = self.employment[pid]
+            if why != "ignoriert" or (pid, d.isoformat()) in taken or (start and d < start) or (end and d > end):
+                continue
+            result.append({"personId": pid, "date": d.isoformat(), "typeCode": code})
+            per_month[d.isoformat()[:7]][0] += 1
+            per_month[d.isoformat()[:7]][1] += hours
+        if result and any(t["code"] == code for t in types):
+            raise Sp5Error(f"Abwesenheitsart {code!r} gibt es schon in SP5 (5LEAVT); sie wird für Dienste auf "
+                           "ignorierten Schichten gebraucht. In der Zuordnung 'ignoreAbsences' um "
+                           f"{code!r} ergänzen oder 'ignoreShiftsAsAbsence' auf false setzen")
+        for m, (n, hours) in sorted(per_month.items()):
+            self.warn(f"Dienste auf ignorierten Schichten im {m}: {n} Tage, {hours:.1f} Stunden als Abwesenheit "
+                      f"{code!r} übernommen")
+        return result
 
     def _absent(self, start: date, end: date, compensatory: bool = False,
                 people: dict[int, dict] | None = None) -> set[tuple[str, date]]:
@@ -907,6 +939,10 @@ class _Import:
         restrictions = self.restrictions() + self.shifts_from_duties()
         restrictions.sort(key=lambda r: (r["personId"], r["shiftId"], r["weekday"]))  # as restrictions() sorts
         absences = self.absences()
+        ignored = self.ignored_duty_absences(absences, absence_types)
+        if ignored:
+            absence_types.append(dict(IGNORED_SHIFT_ABSENCE))
+            absences = sorted(absences + ignored, key=lambda x: (x["personId"], x["date"]))
         holidays, sp5_holiday_dates = self.holidays()
         holiday_dates = {h["date"] for h in holidays}
         demand = self.demand(sp5_holiday_dates, holiday_dates, generic_only=self.demand_source == "history")

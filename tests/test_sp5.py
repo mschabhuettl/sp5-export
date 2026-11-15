@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -14,7 +15,7 @@ from exportcli import MAPPING, ROOT, export, run
 
 from sp5export.dbf import read_table
 from sp5export.demand import median_up, percentile_up, start_day_windows
-from sp5export.feasibility import check_feasibility, rules_for_day
+from sp5export.feasibility import capacity_hours, check_feasibility, rules_for_day
 from sp5export.sp5 import Sp5Error, import_sp5, load_mapping
 from sp5export.timeutil import DAY, interval, month_days
 from tools.generator import generate_with_mixes
@@ -384,6 +385,7 @@ def _mapping(change):
     (lambda m: m["groups"].__setitem__(0, "Team"), "groups, Eintrag 1: muss ein Objekt sein"),
     (lambda m: m["shifts"][0].update(areaId=["AN"]), "shifts, Eintrag 1: 'areaId' ['AN'] ist kein Bereich"),
     (lambda m: m["groups"][0].update(areaIds=[["AN"]]), "groups, Eintrag 1: 'areaIds' enthält ['AN']"),
+    (lambda m: m.update(ignoreShiftsAsAbsence="ja"), "'ignoreShiftsAsAbsence' muss true oder false sein"),
 ])
 def test_mapping_is_validated_up_front(tmp_path, change, message):
     # The folder does not exist: the mapping is checked before the folder is touched.
@@ -1017,6 +1019,76 @@ def test_replaced_duty_on_a_shift_without_area_is_not_reported(folder, tmp_path)
     _, warnings, _ = hx.export("dataset.json")
     assert "Schicht 'H6' ignoriert: 1 Dienste, 8.0 Stunden in den 1 Monaten davor" in warnings
     assert "Schichten ohne Bereich: 1 Schichten, 1 Dienste, 8.0 Stunden in den 1 Monaten davor" in warnings
+
+
+def _ignored_in_january(folder, tmp_path):
+    """HX with H6 in ignoreShifts and H5 unmapped; ignored duties in the history and in the planning month."""
+    hx = _HistoryArea(folder, tmp_path)
+    hx.mapping["shifts"][0]["match"] = "H[1-4]"
+    hx.mapping["ignoreShifts"].append("H6")
+    hx.update("5EMPL", 9203, HRSWEEK=20.0)
+    hx.duty(9201, "H1", DECEMBER)
+    hx.duty(9202, "H6", DECEMBER[:5])  # history: ignored duties do nothing
+    hx.add("5GRASG", EMPLOYEEID=9206, GROUPID=next(g["ID"] for g in hx.rows("5GROUP") if g["NAME"] == "Ehrenamt"))
+    before, _, _ = hx.export("before.json")
+    leave = {r["SHORTNAME"]: r["ID"] for r in hx.rows("5LEAVT")}
+    jan = {d: date(2027, 1, d) for d in range(1, 32)}
+    hx.duty(9202, "H6", [jan[4], jan[5], jan[9], jan[11], jan[12], jan[13]])  # Mon, Tue, Sat, Mon, Tue, Wed
+    hx.duty(9203, "H6", [jan[7]])  # Thu, 20 h a week
+    hx.add("5ABSEN", EMPLOYEEID=9202, DATE="2027-01-11", LEAVETYPID=leave["K"], TYPE=0, INTERVAL=0)
+    hx.duty(9202, "H1", [jan[12]])  # a mapped duty on the same day
+    hx.add("5ABSEN", EMPLOYEEID=9202, DATE="2027-01-13", LEAVETYPID=leave["U"], TYPE=0, INTERVAL=1)
+    hx.duty(9204, "H5", [jan[4]])  # unmapped, not ignored: dropped as before
+    hx.duty(9206, "H6", [jan[4]])  # not exported
+    return hx, before
+
+
+def test_ignored_duties_in_the_planning_month_become_absences(folder, tmp_path):
+    hx, before = _ignored_in_january(folder, tmp_path)
+    result, warnings, _ = hx.export("after.json")
+    ext = {"code": "EXT", "name": "Sonstiger Dienst (ignorierte Schicht)", "reducesTarget": True,
+           "chargesAccount": False, "compensatoryRest": False, "color": "#CCCCCC"}
+    assert result["absenceTypes"] == before["absenceTypes"] + [ext]
+    absences = result["periods"][0]["absences"]
+    assert [(a["personId"], a["date"]) for a in absences if a["typeCode"] == "EXT"] == [
+        ("E9202", "2027-01-04"), ("E9202", "2027-01-05"), ("E9202", "2027-01-09"), ("E9203", "2027-01-07")]
+    assert {(a["date"], a["typeCode"]) for a in absences if a["personId"] == "E9202"} == {
+        ("2027-01-04", "EXT"), ("2027-01-05", "EXT"), ("2027-01-09", "EXT"), ("2027-01-11", "K"),
+        ("2027-01-13", "U")}  # the full-day absence wins, the mapped duty keeps its day, no second absence
+    assert absences == sorted(absences, key=lambda a: (a["personId"], a["date"]))
+    assert "Dienste auf ignorierten Schichten im 2027-01: 4 Tage, 32.0 Stunden als Abwesenheit 'EXT' übernommen" \
+        in warnings
+    assert result["history"] == before["history"]
+    assert {k: v for k, v in result.items() if k not in ("absenceTypes", "periods")} == \
+        {k: v for k, v in before.items() if k not in ("absenceTypes", "periods")}
+    # As Dispofold credits it: weekly hours / 5 on a workday, nothing on a weekend.
+    plain = json.loads(json.dumps(result))
+    plain["periods"][0]["absences"] = [a for a in absences if a["typeCode"] != "EXT"]
+    with_ext, without = capacity_hours(result, MONTH), capacity_hours(plain, MONTH)
+    assert without["E9202"] - with_ext["E9202"] == 2 * 8.0
+    assert without["E9203"] - with_ext["E9203"] == 4.0
+
+
+def test_ignored_duties_as_absences_can_be_switched_off(folder, tmp_path):
+    hx, before = _ignored_in_january(folder, tmp_path)
+    hx.mapping["ignoreShiftsAsAbsence"] = False
+    result, warnings, _ = hx.export("off.json")
+    assert result["absenceTypes"] == before["absenceTypes"]
+    assert {(a["date"], a["typeCode"]) for a in result["periods"][0]["absences"] if a["personId"] == "E9202"} == {
+        ("2027-01-11", "K"), ("2027-01-13", "U")}
+    assert not [a for a in result["periods"][0]["absences"] if a["personId"] == "E9203"]
+    assert not [w for w in warnings if w.startswith("Dienste auf ignorierten Schichten")]
+
+
+def test_absence_code_of_ignored_duties_must_be_free(folder, tmp_path):
+    hx, _ = _ignored_in_january(folder, tmp_path)
+    hx.add("5LEAVT", ID=890, NAME="Sonstiges", SHORTNAME="EXT", POSITION=890, HIDE=0, CHARGETYP=0, DEDUCTACT=0,
+           DEDUCTOVT=0, COLORBK=0)
+    with pytest.raises(Sp5Error, match="Abwesenheitsart 'EXT' gibt es schon in SP5"):
+        import_sp5(hx.dir, MONTH, hx.mapping, history_months=1)
+    hx.mapping["ignoreAbsences"].append("EXT")
+    result, _, _ = hx.export("free.json")
+    assert sum(a["typeCode"] == "EXT" for a in result["periods"][0]["absences"]) == 4
 
 
 def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):
