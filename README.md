@@ -158,8 +158,8 @@ zum Vergleich. Ohne Historie (`--history-months 0`) ist `--demand sp5` nötig, s
 einem Fehler.
 
 Bei jedem Lauf mit Historie (gleich mit welchem `--demand`) meldet der Export je Bereich nur Zahlen: je
-Tagestyp die Spitze des Bedarfs aus der Historie (höchster Wert eines Abschnitts) gegen die Spitze des
-SP5-Bedarfs, wie viele Dienste gezählt wurden und wie viele nicht, weil die Person nicht übernommen wird
+Tagestyp die Spitze des Bedarfs aus der Historie gegen die Spitze des SP5-Bedarfs (beide als höchste
+gleichzeitige Besetzung eines Kalendertags, samt dem Ende der Nachtdienste des Vortags), wie viele Dienste gezählt wurden und wie viele nicht, weil die Person nicht übernommen wird
 (ausgeschlossene Gruppe, ausgeblendet, ausgetreten usw.). Mit `--report` stehen dieselben Zahlen je Bereich und
 Tagestyp in den Zeilen `bedarf`: `dienste_historie` gezählte Dienste, `spitze_historie`, `spitze_sp5` und
 `dienste_nicht_uebernommen`.

@@ -808,7 +808,7 @@ DECEMBER = [date(2026, 12, d) for d in range(1, 32)]
 HOLIDAYS = {date(2026, 12, 8), date(2026, 12, 25), date(2026, 12, 26)}  # full holidays of the synthetic folder
 CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 HX_SHIFTS = {"H1": ("07:00", "19:00"), "H2": ("07:00", "15:00"), "H3": ("19:00", "07:00"), "H4": ("22:00", "06:00"),
-             "H5": ("12:00", "00:00")}
+             "H5": ("12:00", "00:00"), "H6": ("06:00", "14:00")}
 
 
 def _day_code(d):
@@ -816,7 +816,7 @@ def _day_code(d):
 
 
 class _HistoryArea(_Sp5Copy):
-    """The synthetic folder plus an area HX (shifts H1..H5, group 'Team Historie', people 9201..9209) whose
+    """The synthetic folder plus an area HX (shifts H1..H6, group 'Team Historie', people 9201..9209) whose
     only duties are the ones a test adds. Demand from one month of history (December 2026)."""
 
     def __init__(self, folder, tmp_path):
@@ -836,7 +836,7 @@ class _HistoryArea(_Sp5Copy):
             self.add("5GRASG", EMPLOYEEID=eid, GROUPID=950)
         self.mapping = copy.deepcopy(load_mapping(MAPPING))
         self.mapping["areas"].append({"id": "HX", "name": "Historie", "color": "#888888"})
-        self.mapping["shifts"].insert(0, {"match": "H[1-5]", "areaId": "HX"})
+        self.mapping["shifts"].insert(0, {"match": "H[1-6]", "areaId": "HX"})
         self.mapping["groups"].append({"match": "Team Historie", "areaIds": ["HX"]})
 
     def duty(self, eid, code, days):
@@ -931,6 +931,21 @@ def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):
     assert max(r["min"] for r in sp5["demand"] if r["areaId"] == "HX") == 3
     assert "Bedarf aus SP5 (5SHDEM, 5SPDEM); die Historie nur zum Vergleich" in warnings
     assert line in warnings
+
+
+def test_history_peak_counts_the_night_of_the_day_before(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    # The night until 07:00 meets the early shift from 06:00; SP5 has exactly this staffing as its demand.
+    hx.duty(9201, "H3", DECEMBER)
+    hx.duty(9202, "H6", DECEMBER)
+    for code in ("H3", "H6"):
+        for idx in range(8):
+            hx.add("5SHDEM", GROUPID=950, WEEKDAY=idx, SHIFTID=hx.shift[code], WORKPLACID=0, MIN=1, MAX=0)
+    result, warnings, _ = hx.export("dataset.json")
+    assert _hx_rules(result) == [(("HOL",), "06:00", "14:00", 1, None), (("HOL",), "19:00", "07:00", 1, None),
+                                 (CODES, "06:00", "14:00", 1, None), (CODES, "19:00", "07:00", 1, None)]
+    line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
+    assert ": MON 2/2, TUE 2/2, WED 2/2, THU 2/2, FRI 2/2, SAT 2/2, SUN 2/2, HOL 2/2; " in line
 
 
 def test_history_demand_takes_the_median_of_every_day(folder, tmp_path):

@@ -638,8 +638,10 @@ class _Import:
                 # Without HOL rules Dispofold takes the weekday rules on a holiday; a rule with 0 keeps it free.
                 rules += self._rules(area, ["HOL"], None, [(points[0], min(points[-1], points[0] + DAY), 0, None)])
             peaks = []
-            for code in codes:
-                ours = max((c for _, _, c in profiles[code]), default=0)
+            for i, code in enumerate(codes):
+                # As for the SP5 demand: a calendar day with the end of the nights of the day before.
+                before = profiles["HOL" if code == "HOL" else codes[(i - 1) % 7]]
+                ours = max((c for _, _, c in coverage_segments(profiles[code], before)), default=0)
                 sp5 = max((r["min"] for r in sp5_rules if r["areaId"] == area and not r["date"] and code in r["days"]),
                           default=0)
                 peaks.append(f"{code} {ours}/{sp5}")
