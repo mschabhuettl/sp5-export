@@ -110,6 +110,38 @@ Stunden sind die Dienstzeit der Schicht je Dienst (häufigste Zeit der Wochentag
 fehlen in der Meldung. `nicht zugeordnet`: In der Zuordnung unter `shifts` eintragen, wenn Dispofold die Schicht
 planen soll. `ignoriert`: steht in `ignoreShifts`, also Absicht; nichts zu tun.
 
+### Dienste auf ignorierten Schichten in den Planungsmonaten
+
+In der Historie tun Dienste auf Schichten aus `ignoreShifts` nichts: Sie zählen weder für Stunden noch für
+Bereiche, Schichten oder Bedarf. In den Planungsmonaten dagegen ist eine Person, die an einem Tag schon so
+einen Dienst hat (Dienste auf ignorierten Schichten, etwa Schulung, Büro, Kurse), an dem Tag nicht frei. Der
+Export macht daraus eine Abwesenheit der Person an diesem Tag mit der eigenen Abwesenheitsart `EXT`
+("Sonstiger Dienst (ignorierte Schicht)", senkt das Soll, belastet das Stundenkonto nicht, keine Ersatzruhe).
+Gelesen werden die Dienste wie für die Historie (Istplan `5MASHI` ohne `TYPE` 1, Sonderdienste `5SPSHI`,
+Dienstzyklen), nur von übernommenen Mitarbeitern an Tagen ihrer Beschäftigung:
+
+- Eine ganztägige Abwesenheit (`5ABSEN`) am selben Tag gewinnt; ebenso jede andere übernommene Abwesenheit
+  des Tages (auch eine halbtägige), damit es je Person und Tag nur eine gibt.
+- Hat der Tag einen Dienst auf einer zugeordneten Schicht, bleibt dieser Dienst maßgeblich und es entsteht
+  keine Abwesenheit. Dienste der Planungsmonate kommen nicht in den Datensatz; Dispofold plant den Tag neu.
+- Ein Nachtdienst sperrt nur den Tag, an dem er beginnt.
+- Schichten, die weder zugeordnet noch in `ignoreShifts` sind, bleiben wie bisher weg (mit Warnung).
+
+Die Art `EXT` steht nur im Datensatz, wenn es mindestens eine solche Abwesenheit gibt; sonst ist der Datensatz
+genau wie ohne diese Regel. Gibt es in SP5 schon eine übernommene Abwesenheitsart `EXT`, bricht der Export mit
+einer Meldung ab: dann `EXT` in `ignoreAbsences` eintragen oder die Regel abschalten. Abschalten lässt sie sich
+in der Zuordnung mit `"ignoreShiftsAsAbsence": false`. Je Planungsmonat mit solchen Tagen meldet der Export:
+
+```
+Warnung: Dienste auf ignorierten Schichten im 2027-01: 3 Tage, 24.0 Stunden als Abwesenheit 'EXT' übernommen
+```
+
+Stunden sind wie oben die Dienstzeit der Schicht je Dienst. So rechnet Dispofold die Abwesenheit an: Wie jede
+Art mit "senkt das Soll" zählt sie an einem Werktag (Montag bis Freitag, kein Feiertag) Wochenstunden / 5, an
+Wochenenden und Feiertagen nichts; der Tag ist für die Planung gesperrt. Ein Schulungstag von 10 Stunden
+senkt das Soll einer Person mit 40 Wochenstunden also um 8 Stunden, mit 20 Wochenstunden um 4 Stunden; ein
+Schulungstag am Wochenende senkt es nicht. Die tatsächliche Dauer des Dienstes geht nicht ein.
+
 ### Schichten aus der Historie
 
 Manche arbeiten nur bestimmte Schichten ihrer Bereiche (etwa nur Tagdienste), ohne dass SP5 eine
@@ -220,12 +252,13 @@ Bei Listen von Regeln gilt die **erste passende** Regel. Spezielle Regeln daher 
 |---|---|---|
 | `areas` | Liste `{id, name, color}` | Planungsbereiche, so wie sie im Datensatz erscheinen. Die Reihenfolge ist auch die Reihenfolge der `areaIds` einer Person. Pflicht. |
 | `shifts` | Liste `{match, areaId, category?, unpopular?}` | Ordnet SP5-Schichten über ihr **Kürzel** (`5SHIFT.SHORTNAME`) einem Bereich zu. `category` (`EARLY`, `DAY`, `LATE`, `NIGHT`) überschreibt die aus den Zeiten abgeleitete Kategorie; `unpopular` (true/false) überschreibt die Vorgabe "Nachtdienste sind unbeliebt". Pflicht. |
-| `ignoreShifts` | Liste von Mustern | Schichten, die bewusst nicht geplant werden (z. B. Servicetelefon, Verwaltung). Sie erzeugen keine Warnung; ihr Bedarf und ihre Dienste fallen weg. |
+| `ignoreShifts` | Liste von Mustern | Schichten, die bewusst nicht geplant werden (z. B. Servicetelefon, Verwaltung). Sie erzeugen keine Warnung; ihr Bedarf und ihre Dienste fallen weg, in den Planungsmonaten werden ihre Dienste aber Abwesenheiten (siehe [Dienste auf ignorierten Schichten in den Planungsmonaten](#dienste-auf-ignorierten-schichten-in-den-planungsmonaten)). |
 | `groups` | Liste `{match, areaIds}` | Ordnet SP5-Gruppen über ihren **Namen** (`5GROUP.NAME`) Bereichen zu. Eine Person darf in allen Bereichen ihrer Gruppen eingesetzt werden (Qualifikation). Mehrere Gruppen dürfen auf denselben Bereich zeigen. Pflicht. |
 | `ignoreGroups` | Liste von Mustern | Gruppen ohne Bedeutung für die Qualifikation (Teams, "alle"). Sie erzeugen keine Warnung. |
 | `excludeGroups` | Liste von Mustern | Wer in einer dieser Gruppen ist, wird **nicht** übernommen, auch wenn andere Gruppen Bereiche geben (Ehrenamt, Servicetelefon, Verwaltung). Ihr Bedarf fällt ebenfalls weg. |
 | `compensatoryRestAbsences` | Liste von Mustern | Abwesenheitskürzel (`5LEAVT.SHORTNAME`), die Ersatzruhe sind. |
 | `ignoreAbsences` | Liste von Mustern | Abwesenheitsarten, die nicht übernommen werden. |
+| `ignoreShiftsAsAbsence` | true oder false | Dienste auf `ignoreShifts`-Schichten in den Planungsmonaten als Abwesenheit `EXT` übernehmen. Standard `true`. |
 
 Die Zuordnung wird vor dem Lesen des SP5-Ordners vollständig geprüft. Fehlende Pflichtschlüssel, unbekannte
 Schlüssel (Tippfehler), falsche Typen, ungültige `re:`-Muster und Verweise auf Bereiche, die nicht in `areas`
@@ -255,6 +288,8 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
   "Senkt das Soll" (`reducesTarget`), wenn SP5 die Art anrechnet (`CHARGETYP` nicht 0); "belastet das
   Stundenkonto" (`chargesAccount`), wenn sie zusätzlich von den Ist- oder Überstunden abgezogen wird
   (`DEDUCTACT` oder `DEDUCTOVT`, z. B. Zeitausgleich). Bitte für den echten Bestand in Dispofold prüfen.
+  Dazu kommen Dienste auf `ignoreShifts`-Schichten in den Planungsmonaten als Art `EXT` (siehe
+  [Dienste auf ignorierten Schichten in den Planungsmonaten](#dienste-auf-ignorierten-schichten-in-den-planungsmonaten)).
 - **Bedarf:** standardmäßig aus der tatsächlichen Besetzung in der Historie (siehe
   [Bedarf aus der Historie](#bedarf-aus-der-historie)). Mit `--demand sp5` aus `5SHDEM` und `5SPDEM`: je Bereich
   in Zeitfenster umgerechnet, Feiertage als `HOL`, Sonderbedarf und abweichende Tage als Regeln mit Datum.
@@ -300,6 +335,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `... Einschränkungen nur für Feiertage nicht übernommen` | Das Datenformat kennt keine Feiertagseinschränkung. |
 | `... Einschränkungen ohne gültigen Grad (RESTRICT) als 'nie' übernommen` | Grad in SP5 prüfen. |
 | `... weitere Abwesenheiten am selben Tag ignoriert` | Je Person und Tag zählt die erste Abwesenheit. |
+| `Dienste auf ignorierten Schichten im 2027-01: 3 Tage, 24.0 Stunden als Abwesenheit 'EXT' übernommen` | Je Planungsmonat mit solchen Tagen; siehe [Dienste auf ignorierten Schichten in den Planungsmonaten](#dienste-auf-ignorierten-schichten-in-den-planungsmonaten). |
 | `Keine Feiertage in SP5 (5HOLID); ...` | Die österreichischen Feiertage werden verwendet. |
 | `... halbe Feiertage (5HOLID INTERVAL) nicht als Feiertag übernommen` | Halbe Feiertage zählen nur für den SP5-Bedarf (`--demand sp5`) als Feiertag. |
 | `Bereich X: am YYYY-MM-DD kein Bedarf in SP5, es gilt der Wochentagsbedarf` | Nur mit `--demand sp5`: SP5 hat an dem Tag keinen Bedarf; in Dispofold prüfen. |
