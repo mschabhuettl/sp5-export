@@ -18,7 +18,7 @@ from sp5lib import calculations as sp5calc
 from sp5lib.color_utils import bgr_to_hex
 
 from .dbf import DbfError, read_table
-from .demand import coverage_segments, median_up, start_day_windows
+from .demand import coverage_segments, median_up, percentile_up, start_day_windows
 from .feasibility import rules_for_day
 from .holidays import austrian_holidays
 from .timeutil import DAY, WEEKDAY_CODES, add_months, hhmm, interval, minutes, month_days
@@ -38,7 +38,8 @@ DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
 TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
 DEMAND_SOURCES = ("history", "sp5")
-REPORT_COLUMNS = 12
+REPORT_COLUMNS = 13
+MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
 
 
 class Sp5Error(Exception):
@@ -638,14 +639,14 @@ class _Import:
                 samples = [by_day.get((area, d), []) for d in days if day_type(d) == code]
                 profile = []
                 for a, b in pairwise(points):
-                    c = median_up([sum(1 for s, e in spans if s <= a and b <= e) for spans in samples]) \
-                        if samples else 0
-                    if c:
-                        profile.append((a, b, c))
+                    counts = [sum(1 for s, e in spans if s <= a and b <= e) for spans in samples] or [0]
+                    hi = percentile_up(counts, MAX_PERCENT)
+                    if hi:
+                        profile.append((a, b, median_up(counts), hi))
                 profiles[code] = profile
             groups = defaultdict(list)
             for code in codes:
-                key = (code == "HOL", tuple((a, b, c, None) for a, b, c in start_day_windows(profiles[code])))
+                key = (code == "HOL", tuple(start_day_windows(profiles[code])))
                 groups[key].append(code)
             for (_, w), day_codes in groups.items():
                 rules += self._rules(area, day_codes, None, w)
@@ -657,12 +658,15 @@ class _Import:
             for i, code in enumerate(codes):
                 # As for the SP5 demand: a calendar day with the end of the nights of the day before.
                 before = profiles["HOL" if code == "HOL" else codes[(i - 1) % 7]]
-                ours = max((c for _, _, c in coverage_segments(profiles[code], before)), default=0)
+                lows, highs = ([(a, b, x[i]) for a, b, *x in profiles[code]] for i in (0, 1))
+                lows_before, highs_before = ([(a, b, x[i]) for a, b, *x in before] for i in (0, 1))
+                low = max((c for _, _, c in coverage_segments(lows, lows_before)), default=0)
+                high = max((c for _, _, c in coverage_segments(highs, highs_before)), default=0)
                 sp5 = max((r["min"] for r in sp5_rules if r["areaId"] == area and not r["date"] and code in r["days"]),
                           default=0)
-                peaks.append(f"{code} {ours}/{sp5}")
-                self.report_rows.append(("bedarf", "", area, "", counted[(area, code)], "", "", code, ours, sp5,
-                                         left_out[(area, code)]))
+                peaks.append(f"{code} {low}-{high}/{sp5}")
+                self.report_rows.append(("bedarf", "", area, "", counted[(area, code)], "", "", code, low, sp5,
+                                         left_out[(area, code)], "", high))
             done, skipped = sum(counted[(area, c)] for c in codes), sum(left_out[(area, c)] for c in codes)
             self.warn(f"Bedarf im Bereich {area}, Spitze je Tagestyp aus der Historie/aus SP5: {', '.join(peaks)}; "
                       f"{done} Dienste in den {months} Monaten davor gezählt, {skipped} nicht gezählt (Mitarbeiter "

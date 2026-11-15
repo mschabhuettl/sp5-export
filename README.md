@@ -70,11 +70,11 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie
-bedarf;;AN;;412;;;MON;3;8;17;
-bereich;E12;AN;;41;ja;;;;;;
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;
-nicht_zugeordnet;;;S1;120;;;;;;;960.0
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max
+bedarf;;AN;;412;;;MON;3;8;17;;4
+bereich;E12;AN;;41;ja;;;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0;
 ```
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
@@ -164,14 +164,20 @@ den Diensten der Historie (`--history-months`, dieselben Dienste wie für die Hi
   Dienst waren. Jeder Tag zählt, auch einer ohne Dienst im Bereich (mit 0).
 - Ein Dienst zählt für den Tag, an dem er beginnt; ein Nachtdienst reicht in den Folgetag. So kennt Dispofold
   Bedarfsfenster: Ein Fenster gehört zum Tag, an dem es beginnt, und `to <= from` heißt, es endet am Folgetag.
-- `min` des Abschnitts ist der Median dieser Zahlen, ein halber Wert wird aufgerundet (1, 1, 2, 2 ergibt 2);
-  `max` bleibt leer. Benachbarte Abschnitte mit gleichem Wert werden ein Fenster (höchstens 24 Stunden),
-  Abschnitte mit 0 fallen weg. Wochentage mit gleichen Fenstern werden eine Regel, dazu Regeln `HOL`; Regeln mit
+- `min` des Abschnitts ist der Median dieser Zahlen, ein halber Wert wird aufgerundet (1, 1, 2, 2 ergibt 2).
+  `max` ist das 90. Perzentil derselben Zahlen (Nearest-Rank: die Zahl auf Rang aufgerundet 0,9 mal Anzahl der
+  Tage in der sortierten Liste, also immer eine der gezählten Zahlen; 1, 1, 2, 3 ergibt 3) und nie kleiner als
+  `min`. So bleibt eine Obergrenze wie "höchstens einer gleichzeitig" erhalten. Benachbarte Abschnitte werden
+  nur zu einem Fenster (höchstens 24 Stunden), wenn `min` und `max` gleich sind. Abschnitte mit `max` 0 fallen
+  weg; ein Abschnitt mit `min` 0 und `max` ab 1 bleibt als reine Obergrenze. Wochentage mit gleichen Fenstern werden eine Regel, dazu Regeln `HOL`; Regeln mit
   Datum gibt es nicht. Ist ein Bereich an Feiertagen im Median nie besetzt, an anderen Tagen aber schon, bekommt
   er eine Regel `HOL` mit `min` 0: Ohne `HOL`-Regel nähme Dispofold an Feiertagen die Wochentagsregeln.
 - Nach Mitternacht beginnt kein Dienst mehr, die Besetzung kann dort nur sinken. Diesen Teil schreibt der
   Export als Fenster, die alle zur letzten Grenze vor Mitternacht beginnen und sich addieren (Dispofold zählt
-  überlappende Fenster zusammen). Beispiel: Tagdienst 07:00 bis 19:00 und zwei Nachtdienste 19:00 bis 07:00 und
+  überlappende Fenster zusammen, `min` und `max` je für sich). Die Summen von `min` und `max` über die Fenster
+  geben die Abschnitte genau wieder. Nur wenn `max` von einem Schritt zum nächsten weniger fällt als `min`,
+  ginge das nicht (ein Fenster braucht `min` höchstens `max`); dann wird `min` des früheren Abschnitts gesenkt,
+  `max` bleibt genau. Beispiel: Tagdienst 07:00 bis 19:00 und zwei Nachtdienste 19:00 bis 07:00 und
   22:00 bis 06:00 ergeben `07:00`-`07:00` mit 1 und `22:00`-`06:00` mit 1.
 
 `--demand sp5` nimmt wie bisher den Bedarf aus SP5 (`5SHDEM` summiert, `5SPDEM` als Regeln mit Datum), etwa
@@ -180,9 +186,10 @@ einem Fehler.
 
 Bei jedem Lauf mit Historie (gleich mit welchem `--demand`) meldet der Export je Bereich nur Zahlen: je
 Tagestyp die Spitze des Bedarfs aus der Historie gegen die Spitze des SP5-Bedarfs (beide als höchste
-gleichzeitige Besetzung eines Kalendertags, samt dem Ende der Nachtdienste des Vortags), wie viele Dienste gezählt wurden und wie viele nicht, weil die Person nicht übernommen wird
-(ausgeschlossene Gruppe, ausgeblendet, ausgetreten usw.). Mit `--report` stehen dieselben Zahlen je Bereich und
-Tagestyp in den Zeilen `bedarf`: `dienste_historie` gezählte Dienste, `spitze_historie`, `spitze_sp5` und
+gleichzeitige Besetzung eines Kalendertags, samt dem Ende der Nachtdienste des Vortags; aus der Historie als
+`min-max`, etwa `MON 1-2/8`), wie viele Dienste gezählt wurden und wie viele nicht, weil die Person nicht
+übernommen wird (ausgeschlossene Gruppe, ausgeblendet, ausgetreten usw.). Mit `--report` stehen dieselben Zahlen je Bereich und
+Tagestyp in den Zeilen `bedarf`: `dienste_historie` gezählte Dienste, `spitze_historie` (min), `spitze_historie_max`, `spitze_sp5` und
 `dienste_nicht_uebernommen`.
 
 Die Ausgabedatei darf nicht im SP5-Ordner liegen. Warnungen und eine Zusammenfassung erscheinen auf der
@@ -284,7 +291,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schichten im Bereich AN: 4 Mitarbeiter mit keinem Dienst in mindestens einer Schicht des Bereichs ...` | Immer vorhanden (außer ohne Historie); siehe [Schichten aus der Historie](#schichten-aus-der-historie). |
 | `Schichten aus Diensten: 3 Mitarbeiter mit zu kurzer Historie ... nicht bewertet, 20 Paare ... mit Einschränkung aus SP5 belassen` | Immer vorhanden (außer ohne Historie). |
 | `Schichten aus Diensten (mindestens 3): 12 Einschränkungen 'nur auf Anfrage' ergänzt` | Nur mit `--shifts-from-history`. |
-| `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
+| `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3-4/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
 | `Schicht 'S1' nicht zugeordnet: 120 Dienste, 960.0 Stunden ...` oder `Schicht 'X2' ignoriert: ...` | Je Schicht ohne Bereich mit Diensten in der Historie; siehe [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich). Nicht zugeordnet: in `shifts` eintragen, wenn Dispofold sie planen soll. Ignoriert ist Absicht. |
 | `Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden ...` | Immer vorhanden (außer ohne Historie): die Summe dazu. |
 | `Bedarf aus der Historie: Median ...` oder `Bedarf aus SP5 ...` | Immer vorhanden (außer ohne Historie): woher der Bedarf im Datensatz kommt. |

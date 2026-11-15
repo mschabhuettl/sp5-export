@@ -13,7 +13,7 @@ import pytest
 from exportcli import MAPPING, ROOT, export, run
 
 from sp5export.dbf import read_table
-from sp5export.demand import median_up, start_day_windows
+from sp5export.demand import median_up, percentile_up, start_day_windows
 from sp5export.feasibility import check_feasibility, rules_for_day
 from sp5export.sp5 import Sp5Error, import_sp5, load_mapping
 from sp5export.timeutil import DAY, interval, month_days
@@ -716,17 +716,17 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     _, _, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
     lines = report.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
-        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie"
+        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max"
     rows = [line.split(";") for line in lines[1:]]
     assert {r[0] for r in rows} == {"bedarf", "bereich", "schicht"}
-    assert all(len(r) == 12 and r[4].isdigit() for r in rows)
-    assert all(re.match(r"E\d+$", r[1]) and r[7:] == ["", "", "", "", ""] for r in rows if r[0] != "bedarf")
+    assert all(len(r) == 13 and r[4].isdigit() for r in rows)
+    assert all(re.match(r"E\d+$", r[1]) and r[7:] == ["", "", "", "", "", ""] for r in rows if r[0] != "bedarf")
     assert all(r[3] == "" and r[5] in ("ja", "nein") and r[6] == "" for r in rows if r[0] == "bereich")
     demand = [r for r in rows if r[0] == "bedarf"]
     assert [(r[2], r[7]) for r in demand] == [(a["id"], c) for a in sorted(imported[0]["areas"], key=lambda a: a["id"])
                                               for c in ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL")]
     assert all(r[1] == r[3] == r[5] == r[6] == "" and r[8].isdigit() and r[9].isdigit() and r[10].isdigit()
-               and r[11] == "" for r in demand)
+               and r[11] == "" and r[12].isdigit() for r in demand)
     codes = {s["code"] for s in imported[0]["shifts"]}
     assert all(r[3] in codes and r[5] == "" and r[6] in ("", "sp5", "zu_kurze_historie")
                for r in rows if r[0] == "schicht")
@@ -794,8 +794,8 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
     assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
-                                              "", "", ""]
-    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", ""]
+                                              "", "", "", ""]
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""]
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
@@ -880,11 +880,11 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     result, warnings, _ = hx.export("dataset.json", "--report", str(report))
 
     assert _hx_rules(result) == [
-        (("HOL",), "07:00", "19:00", 2, None), (("HOL",), "19:00", "07:00", 1, None),
-        (("MON", "TUE", "WED", "THU", "FRI"), "07:00", "15:00", 2, None),
-        (("MON", "TUE", "WED", "THU", "FRI"), "15:00", "07:00", 1, None),
-        (("MON", "TUE", "WED", "THU", "FRI"), "22:00", "06:00", 1, None),
-        (("SAT", "SUN"), "07:00", "07:00", 1, None), (("SAT", "SUN"), "22:00", "06:00", 1, None),
+        (("HOL",), "07:00", "19:00", 2, 2), (("HOL",), "19:00", "07:00", 1, 1),
+        (("MON", "TUE", "WED", "THU", "FRI"), "07:00", "15:00", 2, 2),
+        (("MON", "TUE", "WED", "THU", "FRI"), "15:00", "07:00", 1, 1),
+        (("MON", "TUE", "WED", "THU", "FRI"), "22:00", "06:00", 1, 1),
+        (("SAT", "SUN"), "07:00", "07:00", 1, 1), (("SAT", "SUN"), "22:00", "06:00", 1, 1),
     ]
     # The rules give back the staffing of a day hour by hour, the night until the next morning.
     staffing = {
@@ -899,14 +899,15 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     left_out = 31 + 5
     counted = 31 + 31 + 28 + len(workdays) + 3
     line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
-    assert line == ("Bedarf im Bereich HX, Spitze je Tagestyp aus der Historie/aus SP5: MON 2/0, TUE 2/0, WED 2/0, "
-                    f"THU 2/0, FRI 2/0, SAT 2/0, SUN 2/0, HOL 2/0; {counted} Dienste in den 1 Monaten davor gezählt, "
+    assert line == ("Bedarf im Bereich HX, Spitze je Tagestyp aus der Historie/aus SP5: MON 2-2/0, TUE 2-2/0, "
+                    "WED 2-2/0, THU 2-2/0, FRI 2-2/0, SAT 2-2/0, SUN 2-2/0, HOL 2-2/0; "
+                    f"{counted} Dienste in den 1 Monaten davor gezählt, "
                     f"{left_out} nicht gezählt (Mitarbeiter nicht übernommen)")
     assert "Bedarf aus der Historie: Median je Bereich und Tagestyp über die 1 Monate davor" in warnings
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
     demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
     assert list(demand) == [*CODES, "HOL"]
-    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", ""]
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"]
     assert sum(int(r[4]) for r in demand.values()) == counted
     assert sum(int(r[10]) for r in demand.values()) == left_out
     # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
@@ -935,13 +936,74 @@ def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path
         "Schichten ohne Bereich: 2 Schichten, 13 Dienste, 116.0 Stunden in den 1 Monaten davor"]
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
     assert [r for r in rows if r[0] in ("ignoriert", "nicht_zugeordnet")] == [
-        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0"],
-        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0"]]
-    assert all(len(r) == 12 for r in rows) and rows[0][-1] == "stunden_historie"
+        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""],
+        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""]]
+    assert all(len(r) == 13 for r in rows) and rows[0][-2:] == ["stunden_historie", "spitze_historie_max"]
     assert result == before  # the dataset does not know these duties
 
     none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
     assert not [w for w in warnings if w.startswith(("Schicht 'H", "Schichten ohne Bereich"))]
+
+
+def _limits(dataset, area, code, minute):
+    """Sum of min and of max of the windows of a day type at `minute` after that day's midnight (0 .. 48 h)."""
+    inside = [r for r in dataset["demand"] if r["areaId"] == area and not r["date"] and code in r["days"]
+              and (lambda s, e: s <= minute < e)(*interval(r["from"], r["to"]))]
+    return sum(r["min"] for r in inside), sum(r["max"] for r in inside)
+
+
+def test_history_max_is_one_for_exactly_one_person_every_day(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    hx.duty(9201, "H1", DECEMBER)
+    result, warnings, _ = hx.export("dataset.json")
+    assert _hx_rules(result) == [(("HOL",), "07:00", "19:00", 1, 1), (CODES, "07:00", "19:00", 1, 1)]
+    assert "MON 1-1/0, TUE 1-1/0" in next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
+
+
+def test_history_max_is_the_90th_percentile_of_every_day(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    mondays = [d for d in DECEMBER if d.weekday() == 0]  # 4 Mondays: 1, 1, 2, 3 at once
+    hx.duty(9201, "H1", mondays)
+    hx.duty(9202, "H1", mondays[2:])
+    hx.duty(9203, "H1", mondays[3:])
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("dataset.json", "--report", str(report))
+    # Median 1.5 rounds up to 2; the 90th percentile of 4 counts is the one at rank 4: 3.
+    assert [r for r in _hx_rules(result) if r[0] == ("MON",)] == [(("MON",), "07:00", "19:00", 2, 3)]
+    assert "MON 2-3/0" in next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
+    rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
+    mon = next(r for r in rows if r[0] == "bedarf" and r[2] == "HX" and r[7] == "MON")
+    assert (mon[8], mon[12]) == ("2", "3")
+
+
+def test_neighbouring_segments_with_equal_min_but_different_max_stay_apart(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    mondays = [d for d in DECEMBER if d.weekday() == 0]
+    hx.duty(9201, "H1", mondays)  # 07:00-19:00
+    hx.duty(9202, "H2", mondays[3:])  # 07:00-15:00, on one Monday of four: 07:00-15:00 has max 2, min 1
+    result, _, _ = hx.export("dataset.json")
+    assert [r for r in _hx_rules(result) if r[0] == ("MON",)] == [(("MON",), "07:00", "15:00", 1, 2),
+                                                                  (("MON",), "15:00", "19:00", 1, 1)]
+
+
+def test_history_max_of_a_night_area_adds_up_over_the_stacked_windows(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    mondays = [d for d in DECEMBER if d.weekday() == 0]
+    hx.duty(9201, "H3", DECEMBER)  # 19:00-07:00 every day
+    hx.duty(9202, "H4", mondays[3:])  # 22:00-06:00, on one Monday of four: min 1, max 2 from 22:00 to 06:00
+    result, _, _ = hx.export("dataset.json")
+    # The night reaches into the next day, so the windows from 22:00 stack (min and max both): minute 0 is the
+    # Monday midnight, 24 h the Tuesday midnight.
+    want = {19: (1, 1), 21: (1, 1), 22: (1, 2), 23: (1, 2), 24: (1, 2), 29: (1, 2), 30: (1, 1), 30.5: (1, 1),
+            31: (0, 0)}
+    assert {h: _limits(result, "HX", "MON", int(h * 60)) for h in want} == want
+
+
+def test_demand_from_sp5_has_no_history_max(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    hx.duty(9201, "H1", DECEMBER)
+    result, _, _ = hx.export("sp5.json", "--demand", "sp5")
+    assert all(r["max"] is None for r in result["demand"] if r["areaId"] == "HX")
 
 
 def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):
@@ -954,9 +1016,9 @@ def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):
             hx.add("5SHDEM", GROUPID=950, WEEKDAY=idx, SHIFTID=hx.shift[code], WORKPLACID=0, MIN=1, MAX=0)
     result, warnings, _ = hx.export("history.json")
     rules = _hx_rules(result)
-    assert rules and {r[3] for r in rules} == {1}
+    assert rules and {r[3] for r in rules} == {0, 1} and {r[4] for r in rules} == {1}
     line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
-    assert "MON 1/3, TUE 1/3" in line
+    assert "MON 1-1/3, TUE 1-1/3" in line
     # --demand sp5 keeps the summed SP5 demand: three at once where the variants overlap.
     sp5, warnings, _ = hx.export("sp5.json", "--demand", "sp5")
     assert max(r["min"] for r in sp5["demand"] if r["areaId"] == "HX") == 3
@@ -973,10 +1035,10 @@ def test_history_peak_counts_the_night_of_the_day_before(folder, tmp_path):
         for idx in range(8):
             hx.add("5SHDEM", GROUPID=950, WEEKDAY=idx, SHIFTID=hx.shift[code], WORKPLACID=0, MIN=1, MAX=0)
     result, warnings, _ = hx.export("dataset.json")
-    assert _hx_rules(result) == [(("HOL",), "06:00", "14:00", 1, None), (("HOL",), "19:00", "07:00", 1, None),
-                                 (CODES, "06:00", "14:00", 1, None), (CODES, "19:00", "07:00", 1, None)]
+    assert _hx_rules(result) == [(("HOL",), "06:00", "14:00", 1, 1), (("HOL",), "19:00", "07:00", 1, 1),
+                                 (CODES, "06:00", "14:00", 1, 1), (CODES, "19:00", "07:00", 1, 1)]
     line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
-    assert ": MON 2/2, TUE 2/2, WED 2/2, THU 2/2, FRI 2/2, SAT 2/2, SUN 2/2, HOL 2/2; " in line
+    assert ": MON 2-2/2, TUE 2-2/2, WED 2-2/2, THU 2-2/2, FRI 2-2/2, SAT 2-2/2, SUN 2-2/2, HOL 2-2/2; " in line
 
 
 def test_history_demand_takes_the_median_of_every_day(folder, tmp_path):
@@ -994,8 +1056,10 @@ def test_history_demand_takes_the_median_of_every_day(folder, tmp_path):
     hx.duty(9201, "H1", days("SUN", 2))  # 2 of 4 Sundays: 0, 0, 1, 1 -> 0.5 -> 1
     result, _, _ = hx.export("dataset.json")
     # Nobody on the holidays: a HOL rule with 0, otherwise Dispofold would take the weekday rules there.
-    assert _hx_rules(result) == [(("HOL",), "07:00", "19:00", 0, None), (("MON",), "07:00", "19:00", 2, None),
-                                 (("WED", "FRI", "SUN"), "07:00", "19:00", 1, None)]
+    # THU and SAT: median 0, but one day in five (three) with a duty, so the 90th percentile is 1.
+    assert _hx_rules(result) == [(("HOL",), "07:00", "19:00", 0, None), (("MON",), "07:00", "19:00", 2, 2),
+                                 (("THU", "SAT"), "07:00", "19:00", 0, 1),
+                                 (("WED", "FRI", "SUN"), "07:00", "19:00", 1, 1)]
     holidays = {h["date"] for h in result["holidays"]}
     assert [r["min"] for r in rules_for_day(result, "HX", date(2027, 1, 6), holidays)] == [0]  # a Wednesday
 
@@ -1005,19 +1069,39 @@ def test_median_rounds_half_up():
 
 
 @pytest.mark.parametrize("profile", [
-    [(7, 15, 2), (15, 22, 1), (22, 30, 2), (30, 31, 1)],  # staggered nights
-    [(12, 19, 1), (19, 24, 2), (24, 31, 1)],  # a late shift ending at midnight and a night
-    [(6, 14, 1), (14, 22, 1), (22, 31, 1)],  # one person for 25 hours: no window longer than a day
-    [(7, 19, 1), (19, 31, 1)],
-    [(0, 12, 3), (12, 24, 3), (24, 36, 2)],
-    [(8, 12, 1), (14, 18, 1)],
+    [(7, 15, 2, 2), (15, 22, 1, 1), (22, 30, 2, 2), (30, 31, 1, 1)],  # staggered nights
+    [(12, 19, 1, 1), (19, 24, 2, 2), (24, 31, 1, 1)],  # a late shift ending at midnight and a night
+    [(6, 14, 1, 1), (14, 22, 1, 1), (22, 31, 1, 1)],  # one person for 25 hours: no window longer than a day
+    [(7, 19, 1, 1), (19, 31, 1, 1)],
+    [(0, 12, 3, 3), (12, 24, 3, 3), (24, 36, 2, 2)],
+    [(8, 12, 1, 1), (14, 18, 1, 1)],
+    [(7, 19, 1, 2), (19, 24, 1, 3), (24, 31, 1, 2)],  # a night area with a larger max
+    [(7, 19, 1, 1), (19, 24, 0, 2), (24, 31, 0, 1)],  # no min, only a limit
 ])
 def test_windows_start_on_their_day_and_add_up_to_the_staffing(profile):
-    hours = [(a * 60, b * 60, c) for a, b, c in profile]
+    hours = [(a * 60, b * 60, lo, hi) for a, b, lo, hi in profile]
     windows = start_day_windows(hours)
-    assert all(0 <= a < DAY and a < b <= a + DAY and c > 0 for a, b, c in windows)
+    assert all(0 <= a < DAY and a < b <= a + DAY and 0 <= lo <= hi and hi > 0 for a, b, lo, hi in windows)
     for minute in range(0, 2 * DAY, 30):
-        want = sum(c for a, b, c in hours if a <= minute < b)
-        assert sum(c for a, b, c in windows if a <= minute < b) == want, minute
-    # Neighbours with the same count are one window as long as it fits into a day.
+        want_min = sum(lo for a, b, lo, _ in hours if a <= minute < b)
+        want_max = sum(hi for a, b, _, hi in hours if a <= minute < b)
+        assert sum(hi for a, b, _, hi in windows if a <= minute < b) == want_max, minute
+        assert sum(lo for a, b, lo, _ in windows if a <= minute < b) == want_min, minute
+    # Neighbours with the same min and max are one window as long as it fits into a day.
     assert len(windows) <= len(profile)
+
+
+def test_windows_lower_the_min_where_max_falls_less_than_min():
+    # 19:00-24:00 two to two, after midnight one to two: a window with min 1 and max 0 does not exist.
+    hours = [(19 * 60, 24 * 60, 2, 2), (24 * 60, 30 * 60, 1, 2)]
+    windows = start_day_windows(hours)
+    assert windows == [(19 * 60, 30 * 60, 1, 2)]
+
+
+def test_percentile_is_nearest_rank():
+    counts = list(range(10))
+    assert percentile_up(counts, 90) == 8  # rank 9 of 10
+    assert percentile_up([0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 90) == 0
+    assert percentile_up([0, 0, 0, 0, 0, 0, 0, 0, 1, 1], 90) == 1
+    assert percentile_up([5], 90) == 5 and percentile_up([0, 3], 90) == 3
+    assert percentile_up(list(range(31)), 90) == 27  # rank ceil(27.9) = 28
