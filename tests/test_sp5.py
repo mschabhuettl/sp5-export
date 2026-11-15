@@ -1035,9 +1035,9 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
         """Duties and hours of people not exported on shifts taken and on other shifts (the synthetic folder has
         some of its own in the last week)."""
         line = next(w for w in lines if w.startswith(f"{head}, Mitarbeiter nicht übernommen: "))
-        m = re.fullmatch(rf"{head}, Mitarbeiter nicht übernommen: (\d+) Dienste, ([\d.]+) Stunden auf übernommenen "
-                         r"Schichten \(die nicht gezählten der Bedarfszeilen\), dazu (\d+) Dienste, ([\d.]+) Stunden "
-                         "auf Schichten, die nicht übernommen werden", line)
+        m = re.match(rf"{head}, Mitarbeiter nicht übernommen: (\d+) Dienste, ([\d.]+) Stunden auf übernommenen "
+                     r"Schichten \(die nicht gezählten der Bedarfszeilen\), dazu (\d+) Dienste, ([\d.]+) Stunden "
+                     "auf Schichten, die nicht übernommen werden$", line)
         return int(m[1]), float(m[2]), int(m[3]), float(m[4])
 
     was, now = not_exported(before_warnings), not_exported(warnings)
