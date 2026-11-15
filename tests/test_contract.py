@@ -26,7 +26,8 @@ REJECT = sorted((DISPOFOLD / "reject").glob("*.synthetic.json"))
 # exporter's own tests cover the ones it could produce (test_sp5.py: weekly hours, shift length,
 # employment order, absences and previous duties against the month, references).
 SCHEMA_CANNOT_EXPRESS = {
-    "absence-outside-month", "bad-demand-max", "bad-employment", "bad-validity", "duplicate-absence-type",
+    "absence-outside-month", "bad-demand-max", "bad-employment", "bad-shift-mix", "bad-validity",
+    "duplicate-absence-type",
     "duplicate-area-id", "duplicate-fixed", "duplicate-history", "duplicate-period", "duplicate-person-id",
     "duplicate-shift-id", "fixed-outside-month", "previous-duty-in-month", "several-errors", "shift-24-hours",
     "shift-too-long", "unknown-absence-type", "unknown-area-demand", "unknown-area-person", "unknown-area-shift",

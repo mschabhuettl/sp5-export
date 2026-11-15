@@ -114,9 +114,10 @@ leer sein. Felder, die im Beispiel `null` sind, dürfen fehlen.
 | person | `familyRules` | Familienwunsch je Wochentag (1..7): spätestes Ende, frühester Beginn, keine Nacht |
 | person | `externalId` | Id im Quellsystem, z. B. Personalnummer |
 | person | `entryDate`, `exitDate` | erster und letzter Tag der Beschäftigung, `null` = offen. Tage außerhalb werden nicht verplant, das Soll wird anteilig berechnet |
+| person | `shiftMix` | optional, gewohnte Verteilung der Dienste, z. B. aus der Historie: `{"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"AN": 0.7, "DR": 0.3}}`. Anteile von 0 bis 1, jede nicht leere Liste ergibt zusammen 1 (±0,01), Bereiche nur aus `areaIds`. Fehlt sie oder ist sie `null`, gilt keine Verteilung. Siehe Regel `shiftMix` in [regeln.md](regeln.md) |
 | restriction | `shiftId` / `category` | genau eines von beiden: eine Schicht oder alle Schichten einer Kategorie (z. B. `NIGHT`) |
 | restriction | `weekday` | 1..7, 0 = jeden Tag |
-| restriction | `kind` | `NEVER` (nie, hart) oder `ON_REQUEST` (nur auf Anfrage, weich) |
+| restriction | `kind` | `NEVER` (nie, hart) oder `ON_REQUEST` (nur auf Anfrage: nie automatisch geplant, nur von Hand) |
 | restriction | `validFrom`, `validTo` | erster und letzter Tag, an dem die Einschränkung gilt, `null` = offen |
 | history | | Kennzahlen früherer Monate für die Fairness über mehrere Monate |
 | history | `source` | `import` (Istwerte aus dem Quellsystem) oder `plan` (beim Monatsabschluss geschrieben) |
@@ -164,7 +165,8 @@ Abgelehnt wird insbesondere:
   fixe Dienste derselben Person am selben Tag, zwei Historieneinträge derselben Person im selben Monat;
 - Verweise auf unbekannte Bereiche, Personen, Schichten oder Abwesenheitsarten;
 - Monate in der Historie, die nicht `YYYY-MM` sind, und eine `source` außer `import` und `plan`;
-- Wochenstunden kleiner oder gleich 0, `exitDate` vor `entryDate`;
+- Wochenstunden kleiner oder gleich 0, `exitDate` vor `entryDate`, eine gewohnte Verteilung (`shiftMix`) mit
+  Anteilen außerhalb von 0 bis 1, einer Summe ungleich 1 oder einem Bereich, der nicht zur Person gehört;
 - unbekannte Tagestypen im Bedarf, eine Bedarfsregel ohne `days` und ohne `date`, `min` kleiner als 0 oder
   `max` kleiner als `min`;
 - Wochentage einer Einschränkung außerhalb von 0..7 oder eines Familienwunsches außerhalb von 1..7, eine
@@ -205,7 +207,8 @@ gespeicherten Stammdaten geprüft.
 - `pinned: true` heißt: von der Planung festgelegt, der Solver ändert es beim Neuplanen nicht.
 - `status`: `EMPTY`, `SOLVING`, `SOLVED`, `STOPPED`, `FAILED`, `CLOSED` (Monat abgeschlossen).
 - Der Score hat drei Stufen: `hard` (Regeln aus KV und Qualifikation, muss 0 sein), `medium` (nicht
-  gedeckter Bedarf in Personenminuten) und `soft` (Wünsche, Fairness, Blöcke usw.).
+  gedeckter Bedarf und Überbesetzung, siehe [regeln.md](regeln.md)) und `soft` (Wünsche, Fairness, Blöcke
+  usw.).
 
 ## Fehlercodes beim Import
 
@@ -237,6 +240,7 @@ der Monat des Eintrags.
 | `import.badHistorySource` | `personId`, `month` | `source` eines Historieneintrags ist weder `import` noch `plan` |
 | `import.badWeeklyHours` | `personId`, `weeklyHours` | Wochenstunden kleiner oder gleich 0 |
 | `import.badEmployment` | `personId` | `exitDate` liegt vor `entryDate` |
+| `import.badShiftMix` | `personId` | gewohnte Verteilung ungültig: Anteil außerhalb von 0 bis 1, Summe ungleich 1 oder Bereich, der nicht zur Person gehört |
 | `import.badDemandDay` | `areaId`, `index`, `day` | unbekannter Tagestyp im Bedarf (erlaubt `MON`..`SUN`, `HOL`) |
 | `import.badDemand` | `areaId`, `index` | Bedarfsregel ohne `days` und ohne `date`, `min` kleiner als 0 oder `max` kleiner als `min` |
 | `import.badWeekday` | `kind`, `personId`, `weekday` | Wochentag einer Einschränkung nicht in 0..7 oder eines Familienwunsches nicht in 1..7 |
