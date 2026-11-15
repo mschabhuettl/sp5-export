@@ -80,7 +80,7 @@ def test_export_passes(tmp_path):
     dataset, mixes = generate_with_mixes("2027-01", 3)
     write_sp5_folder(dataset, mixes, tmp_path / "sp5")
     # export() itself asserts that the file passes; checked here once more to keep the contract visible.
-    result, _, _ = export(tmp_path / "sp5", "2027-01", MAPPING, tmp_path / "dataset.json")
+    result, _, _ = export(tmp_path / "sp5", "2027-01", MAPPING, tmp_path / "dataset.json", "--demand", "sp5")
     assert result["people"] and result["shifts"] and result["demand"] and result["history"]
     assert result["version"] == 2 and problems(result) == []
     assert {h["source"] for h in result["history"]} == {"import"}

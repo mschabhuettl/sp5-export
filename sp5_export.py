@@ -13,7 +13,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from sp5export.sp5 import Sp5Error, import_sp5, load_mapping
+from sp5export.sp5 import DEMAND_SOURCES, Sp5Error, import_sp5, load_mapping
 from sp5export.timeutil import parse_month
 
 
@@ -34,7 +34,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--shifts-from-history", type=int, metavar="N",
                         help="Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "
                              "'nur auf Anfrage'")
-    parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter")
+    parser.add_argument("--demand", choices=DEMAND_SOURCES, default="history",
+                        help="Bedarf aus der tatsächlichen Besetzung in der Historie (Standard) oder aus dem "
+                             "SP5-Bedarf (5SHDEM, summiert)")
+    parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter, "
+                                         "Bedarf je Bereich und Tagestyp")
     parser.add_argument("--mapping", required=True, help="Zuordnungsdatei (JSON)")
     parser.add_argument("--out", required=True, help="Ausgabedatei (JSON)")
     args = parser.parse_args(argv)
@@ -62,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         rows: list = []
         dataset, warnings = import_sp5(data, args.month, mapping, args.to, args.history_months,
-                                       args.areas_from_history, rows, args.shifts_from_history)
+                                       args.areas_from_history, rows, args.shifts_from_history, args.demand)
     except Sp5Error as e:
         return _fail(str(e))
     except Exception as e:
@@ -78,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     def write_report(f):
         w = csv.writer(f, delimiter=";")
         w.writerow(["pruefung", "person", "bereich", "schicht", "dienste_historie", "bereich_aus_gruppen",
-                    "einschraenkung"])
+                    "einschraenkung", "tagestyp", "spitze_historie", "spitze_sp5", "dienste_nicht_uebernommen"])
         w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed

@@ -13,9 +13,10 @@ import pytest
 from exportcli import MAPPING, ROOT, export, run
 
 from sp5export.dbf import read_table
+from sp5export.demand import median_up, start_day_windows
 from sp5export.feasibility import check_feasibility, rules_for_day
 from sp5export.sp5 import Sp5Error, import_sp5, load_mapping
-from sp5export.timeutil import interval, month_days
+from sp5export.timeutil import DAY, interval, month_days
 from tools.generator import generate_with_mixes
 from tools.sp5writer import OTHER_SHIFTS, write_sp5_folder
 
@@ -41,7 +42,8 @@ def folder(source, tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def exported(folder, tmp_path_factory):
-    return export(folder, MONTH, MAPPING, tmp_path_factory.mktemp("out") / "dataset.json")
+    # The SP5 demand: the synthetic folder has duties in the last week before the month only.
+    return export(folder, MONTH, MAPPING, tmp_path_factory.mktemp("out") / "dataset.json", "--demand", "sp5")
 
 
 @pytest.fixture(scope="module")
@@ -283,7 +285,7 @@ def test_deviation_employment_and_max_boundaries(source, folder, tmp_path):
         add("5SHDEM", GROUPID=groups["Lageführung"], WEEKDAY=idx, SHIFTID=xid, WORKPLACID=0, MIN=0, MAX=2)
     mapping = copy.deepcopy(load_mapping(MAPPING))
     mapping["shifts"].insert(0, {"match": "LX", "areaId": "LF"})
-    result, warnings, _ = export(copy_dir, MONTH, mapping, tmp_path / "dataset.json")
+    result, warnings, _ = export(copy_dir, MONTH, mapping, tmp_path / "dataset.json", "--demand", "sp5")
     pid = f"E{eid}"
     codes = _codes(result)
     prev = [d for d in result["periods"][0]["previousDuties"] if d["personId"] == pid and d["date"] == duty["date"]]
@@ -300,7 +302,7 @@ def test_deviation_employment_and_max_boundaries(source, folder, tmp_path):
 
 
 def test_cli_writes_the_dataset_of_the_reader(folder, exported):
-    dataset, warnings = import_sp5(folder, MONTH, load_mapping(MAPPING))
+    dataset, warnings = import_sp5(folder, MONTH, load_mapping(MAPPING), demand="sp5")
     assert exported[0] == dataset and exported[1] == warnings
 
 
@@ -621,8 +623,9 @@ def test_several_planning_months(source, folder, tmp_path):
     sp5 = _Sp5Copy(folder, tmp_path)
     late = max(int(p["externalId"]) for p in source[0]["people"])
     sp5.update("5EMPL", late, EMPSTART="2027-03-01")  # employed only in the last month of the range
-    single, _, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "one.json")
-    result, warnings, proc = export(sp5.dir, MONTH, MAPPING, tmp_path / "three.json", "--to", "2027-03")
+    single, _, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "one.json", "--demand", "sp5")
+    result, warnings, proc = export(sp5.dir, MONTH, MAPPING, tmp_path / "three.json", "--to", "2027-03", "--demand",
+                                    "sp5")
     assert [p["month"] for p in result["periods"]] == ["2027-01", "2027-02", "2027-03"]
     first, *later = result["periods"]
     others = [d for d in first["previousDuties"] if d["personId"] != f"E{late}"]
@@ -651,6 +654,8 @@ def test_several_planning_months(source, folder, tmp_path):
     (("--history-months", "0", "--areas-from-history", "2"), "eine Historie"),
     (("--shifts-from-history", "0"), "Mindestzahl ab 1"),
     (("--history-months", "0", "--shifts-from-history", "2"), "eine Historie"),
+    (("--history-months", "0"), "Bedarf aus der Historie braucht eine Historie (--history-months ab 1)"),
+    (("--history-months", "0", "--demand", "history"), "ohne Historie --demand sp5 angeben"),
 ])
 def test_bad_range_options(folder, tmp_path, options, message):
     proc = run(folder, MONTH, MAPPING, tmp_path / "dataset.json", *options)
@@ -659,7 +664,7 @@ def test_bad_range_options(folder, tmp_path, options, message):
 
 
 def test_history_length_is_configurable(folder, imported, tmp_path):
-    none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0")
+    none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0", "--demand", "sp5")
     assert none["history"] == []
     long, _, _ = export(folder, MONTH, MAPPING, tmp_path / "long.json", "--history-months", "24")
     assert min(h["month"] for h in long["history"]) == "2025-01"
@@ -710,11 +715,18 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     report = tmp_path / "bericht.csv"
     _, _, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
     lines = report.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung"
+    assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
+        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen"
     rows = [line.split(";") for line in lines[1:]]
-    assert {r[0] for r in rows} == {"bereich", "schicht"}
-    assert all(re.match(r"E\d+$", r[1]) and r[4].isdigit() for r in rows)
+    assert {r[0] for r in rows} == {"bedarf", "bereich", "schicht"}
+    assert all(len(r) == 11 and r[4].isdigit() for r in rows)
+    assert all(re.match(r"E\d+$", r[1]) and r[7:] == ["", "", "", ""] for r in rows if r[0] != "bedarf")
     assert all(r[3] == "" and r[5] in ("ja", "nein") and r[6] == "" for r in rows if r[0] == "bereich")
+    demand = [r for r in rows if r[0] == "bedarf"]
+    assert [(r[2], r[7]) for r in demand] == [(a["id"], c) for a in sorted(imported[0]["areas"], key=lambda a: a["id"])
+                                              for c in ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL")]
+    assert all(r[1] == r[3] == r[5] == r[6] == "" and r[8].isdigit() and r[9].isdigit() and r[10].isdigit()
+               for r in demand)
     codes = {s["code"] for s in imported[0]["shifts"]}
     assert all(r[3] in codes and r[5] == "" and r[6] in ("", "sp5", "zu_kurze_historie")
                for r in rows if r[0] == "schicht")
@@ -733,7 +745,7 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
 
 
 def test_holiday_before_the_first_month_counts_without_history(folder, imported, tmp_path):
-    none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0")
+    none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0", "--demand", "sp5")
     assert "2026-12-25" in {h["date"] for h in none["holidays"]}
     assert none["demand"] == imported[0]["demand"]
 
@@ -781,9 +793,182 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
 
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
-    assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage"]
-    assert rows[("E9101", day["code"])][4:] == ["6", "", ""]
+    assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
+                                              "", ""]
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", ""]
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
     assert not any(name in text for name in ("Nur", "Tag", *_names(source[0])))
+
+
+# ── demand from the history ───────────────────────────────────────
+
+DECEMBER = [date(2026, 12, d) for d in range(1, 32)]
+HOLIDAYS = {date(2026, 12, 8), date(2026, 12, 25), date(2026, 12, 26)}  # full holidays of the synthetic folder
+CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+HX_SHIFTS = {"H1": ("07:00", "19:00"), "H2": ("07:00", "15:00"), "H3": ("19:00", "07:00"), "H4": ("22:00", "06:00"),
+             "H5": ("12:00", "00:00")}
+
+
+def _day_code(d):
+    return "HOL" if d in HOLIDAYS else CODES[d.weekday()]
+
+
+class _HistoryArea(_Sp5Copy):
+    """The synthetic folder plus an area HX (shifts H1..H5, group 'Team Historie', people 9201..9209) whose
+    only duties are the ones a test adds. Demand from one month of history (December 2026)."""
+
+    def __init__(self, folder, tmp_path):
+        super().__init__(folder, tmp_path)
+        self.out = tmp_path
+        self.shift = {}
+        for i, (code, (start, end)) in enumerate(HX_SHIFTS.items()):
+            self.shift[code] = 950 + i
+            self.add("5SHIFT", ID=950 + i, NAME=f"Historie {code}", SHORTNAME=code, POSITION=950 + i, HIDE=0,
+                     COLORBK=0, **{f"STARTEND{k}": f"{start}-{end}" for k in range(8)},
+                     **{f"DURATION{k}": 8.0 for k in range(8)})
+        self.add("5GROUP", ID=950, NAME="Team Historie", SHORTNAME="GH", POSITION=950, HIDE=0, SUPERID=0)
+        for eid in range(9201, 9210):
+            self.add("5EMPL", ID=eid, NAME="Historie", FIRSTNAME="Person", SHORTNAME=f"H{eid}", NUMBER=str(eid),
+                     POSITION=eid, HIDE=0, WORKDAYS="1 1 1 1 1 0 0 0", CALCBASE=1, HRSDAY=8.0, HRSWEEK=40.0,
+                     HRSMONTH=0.0, HRSTOTAL=0.0, EMPSTART="2015-01-01")
+            self.add("5GRASG", EMPLOYEEID=eid, GROUPID=950)
+        self.mapping = copy.deepcopy(load_mapping(MAPPING))
+        self.mapping["areas"].append({"id": "HX", "name": "Historie", "color": "#888888"})
+        self.mapping["shifts"].insert(0, {"match": "H[1-5]", "areaId": "HX"})
+        self.mapping["groups"].append({"match": "Team Historie", "areaIds": ["HX"]})
+
+    def duty(self, eid, code, days):
+        for d in days:
+            self.add("5MASHI", EMPLOYEEID=eid, SHIFTID=self.shift[code], DATE=d.isoformat(), WORKPLACID=0, TYPE=0)
+
+    def export(self, name, *options):
+        return export(self.dir, MONTH, self.mapping, self.out / name, "--history-months", "1", *options)
+
+
+def _hx_rules(dataset):
+    return sorted((tuple(r["days"]), r["from"], r["to"], r["min"], r["max"]) for r in dataset["demand"]
+                  if r["areaId"] == "HX")
+
+
+def _on_duty(dataset, area, code, minute):
+    """People the rules of a day type ask for at `minute` after that day's midnight (0 .. 48 h), counting only
+    windows of that day type: a window belongs to the day it starts, and overlapping windows add up."""
+    total = 0
+    for r in dataset["demand"]:
+        if r["areaId"] == area and not r["date"] and code in r["days"]:
+            s, e = interval(r["from"], r["to"])
+            total += r["min"] if s <= minute < e else 0
+    return total
+
+
+def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    workdays = [d for d in DECEMBER if d.weekday() < 5 and d not in HOLIDAYS]
+    hx.duty(9201, "H1", DECEMBER)  # 07:00-19:00 every day
+    hx.duty(9202, "H3", DECEMBER)  # 19:00-07:00 every day, crosses midnight
+    hx.duty(9203, "H4", [d for d in DECEMBER if d not in HOLIDAYS])  # a second night 22:00-06:00
+    hx.duty(9204, "H2", workdays)  # 07:00-15:00 Monday to Friday
+    hx.duty(9205, "H1", sorted(HOLIDAYS))  # on holidays only
+    # Not exported: someone in an excluded group, and a hidden employee.
+    hx.add("5GRASG", EMPLOYEEID=9206, GROUPID=next(g["ID"] for g in hx.rows("5GROUP") if g["NAME"] == "Ehrenamt"))
+    hx.duty(9206, "H1", DECEMBER)
+    hx.update("5EMPL", 9207, HIDE=1)
+    hx.duty(9207, "H2", DECEMBER[:5])
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("dataset.json", "--report", str(report))
+
+    assert _hx_rules(result) == [
+        (("HOL",), "07:00", "19:00", 2, None), (("HOL",), "19:00", "07:00", 1, None),
+        (("MON", "TUE", "WED", "THU", "FRI"), "07:00", "15:00", 2, None),
+        (("MON", "TUE", "WED", "THU", "FRI"), "15:00", "07:00", 1, None),
+        (("MON", "TUE", "WED", "THU", "FRI"), "22:00", "06:00", 1, None),
+        (("SAT", "SUN"), "07:00", "07:00", 1, None), (("SAT", "SUN"), "22:00", "06:00", 1, None),
+    ]
+    # The rules give back the staffing of a day hour by hour, the night until the next morning.
+    staffing = {
+        "MON": {6: 0, 7: 2, 14: 2, 15: 1, 21: 1, 22: 2, 29: 2, 30: 1, 31: 0},
+        "SAT": {6: 0, 7: 1, 18: 1, 21: 1, 22: 2, 29: 2, 30: 1, 31: 0},
+        "HOL": {6: 0, 7: 2, 18: 2, 19: 1, 22: 1, 30: 1, 31: 0},
+    }
+    for code, hours in staffing.items():
+        assert {h: _on_duty(result, "HX", code, h * 60) for h in hours} == hours, code
+    assert all(r["date"] is None for r in result["demand"])
+
+    left_out = 31 + 5
+    counted = 31 + 31 + 28 + len(workdays) + 3
+    line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
+    assert line == ("Bedarf im Bereich HX, Spitze je Tagestyp aus der Historie/aus SP5: MON 2/0, TUE 2/0, WED 2/0, "
+                    f"THU 2/0, FRI 2/0, SAT 2/0, SUN 2/0, HOL 2/0; {counted} Dienste in den 1 Monaten davor gezählt, "
+                    f"{left_out} nicht gezählt (Mitarbeiter nicht übernommen)")
+    assert "Bedarf aus der Historie: Median je Bereich und Tagestyp über die 1 Monate davor" in warnings
+    rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
+    demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
+    assert list(demand) == [*CODES, "HOL"]
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3"]
+    assert sum(int(r[4]) for r in demand.values()) == counted
+    assert sum(int(r[10]) for r in demand.values()) == left_out
+    # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
+    assert int(demand["TUE"][10]) == 4 + 1  # 4 Tuesdays of the excluded person, 2026-12-01 of the hidden one
+
+
+def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    # One post, three shift variants: one person a day on one of them. SP5 carries MIN 1 for every variant.
+    for i, d in enumerate(DECEMBER):
+        hx.duty(9201 + i % 3, ("H1", "H2", "H5")[i % 3], [d])
+    for code in ("H1", "H2", "H5"):
+        for idx in range(8):
+            hx.add("5SHDEM", GROUPID=950, WEEKDAY=idx, SHIFTID=hx.shift[code], WORKPLACID=0, MIN=1, MAX=0)
+    result, warnings, _ = hx.export("history.json")
+    rules = _hx_rules(result)
+    assert rules and {r[3] for r in rules} == {1}
+    line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
+    assert "MON 1/3, TUE 1/3" in line
+    # --demand sp5 keeps the summed SP5 demand: three at once where the variants overlap.
+    sp5, warnings, _ = hx.export("sp5.json", "--demand", "sp5")
+    assert max(r["min"] for r in sp5["demand"] if r["areaId"] == "HX") == 3
+    assert "Bedarf aus SP5 (5SHDEM, 5SPDEM); die Historie nur zum Vergleich" in warnings
+    assert line in warnings
+
+
+def test_history_demand_takes_the_median_of_every_day(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+
+    def days(code, *nth):
+        return [d for d in DECEMBER if _day_code(d) == code][slice(None) if not nth else slice(*nth)]
+
+    hx.duty(9201, "H1", days("MON"))  # 4 Mondays: 1, 1, 2, 2 at once -> 1.5 -> 2
+    hx.duty(9202, "H1", days("MON", 2))
+    hx.duty(9201, "H1", days("WED", 3))  # 3 of 5 Wednesdays -> 1
+    hx.duty(9201, "H1", days("THU", 2))  # 2 of 5 Thursdays: the days without a duty count -> 0
+    hx.duty(9201, "H1", days("FRI", 2))  # 2 of 3 Fridays -> 1
+    hx.duty(9201, "H1", days("SAT", 1))  # 1 of 3 Saturdays -> 0
+    hx.duty(9201, "H1", days("SUN", 2))  # 2 of 4 Sundays: 0, 0, 1, 1 -> 0.5 -> 1
+    result, _, _ = hx.export("dataset.json")
+    assert _hx_rules(result) == [(("MON",), "07:00", "19:00", 2, None),
+                                 (("WED", "FRI", "SUN"), "07:00", "19:00", 1, None)]
+
+
+def test_median_rounds_half_up():
+    assert [median_up(v) for v in ([0, 1], [1, 2], [0, 0, 1, 1], [3, 0, 1], [2], [0, 0, 0, 5])] == [1, 2, 1, 1, 2, 0]
+
+
+@pytest.mark.parametrize("profile", [
+    [(7, 15, 2), (15, 22, 1), (22, 30, 2), (30, 31, 1)],  # staggered nights
+    [(12, 19, 1), (19, 24, 2), (24, 31, 1)],  # a late shift ending at midnight and a night
+    [(6, 14, 1), (14, 22, 1), (22, 31, 1)],  # one person for 25 hours: no window longer than a day
+    [(7, 19, 1), (19, 31, 1)],
+    [(0, 12, 3), (12, 24, 3), (24, 36, 2)],
+    [(8, 12, 1), (14, 18, 1)],
+])
+def test_windows_start_on_their_day_and_add_up_to_the_staffing(profile):
+    hours = [(a * 60, b * 60, c) for a, b, c in profile]
+    windows = start_day_windows(hours)
+    assert all(0 <= a < DAY and a < b <= a + DAY and c > 0 for a, b, c in windows)
+    for minute in range(0, 2 * DAY, 30):
+        want = sum(c for a, b, c in hours if a <= minute < b)
+        assert sum(c for a, b, c in windows if a <= minute < b) == want, minute
+    # Neighbours with the same count are one window as long as it fits into a day.
+    assert len(windows) <= len(profile)

@@ -18,7 +18,7 @@ from sp5lib import calculations as sp5calc
 from sp5lib.color_utils import bgr_to_hex
 
 from .dbf import DbfError, read_table
-from .demand import coverage_segments
+from .demand import coverage_segments, median_up, start_day_windows
 from .feasibility import rules_for_day
 from .holidays import austrian_holidays
 from .timeutil import DAY, WEEKDAY_CODES, add_months, hhmm, interval, minutes, month_days
@@ -37,6 +37,8 @@ PREVIOUS_DAYS = 7
 DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
 TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
+DEMAND_SOURCES = ("history", "sp5")
+REPORT_COLUMNS = 11
 
 
 class Sp5Error(Exception):
@@ -193,8 +195,10 @@ def _norm_time(t: str) -> str:
 
 class _Import:
     def __init__(self, folder: Path, months: list[str], mapping: dict, history_months: int = HISTORY_MONTHS,
-                 areas_from_history: int | None = None, shifts_from_history: int | None = None):
+                 areas_from_history: int | None = None, shifts_from_history: int | None = None,
+                 demand: str = "history"):
         self.folder, self.mapping = folder, mapping
+        self.demand_source = demand
         self.month, self.months = months[0], months
         self.history_months, self.areas_from_history = history_months, areas_from_history
         self.shifts_from_history = shifts_from_history
@@ -202,7 +206,9 @@ class _Import:
         self.days = [d for m in months for d in month_days(m)]
         self.first, self.last = self.days[0], self.days[-1]
         self.history_start = date.fromisoformat(add_months(self.month, -history_months) + "-01")
-        self.report_rows: list[tuple] = []  # (check, person, area, shift code, duties, area from groups, restriction)
+        # (check, person, area, shift code, duties, area from groups, restriction[, day type, peak from history,
+        # peak from SP5, duties left out])
+        self.report_rows: list[tuple] = []
         self.shift_counts: Counter = Counter()  # (person id, shift id) -> duties in the history window
         self._group_regular: dict = {}
         self._tables: dict[str, list[dict]] = {}
@@ -485,8 +491,9 @@ class _Import:
 
     # ── demand ───────────────────────────────────────────────
 
-    def demand(self, sp5_holiday_dates: set[str], holiday_dates: set[str]) -> list[dict]:
-        """5SHDEM (per group, shift and day index) and 5SPDEM (per date) summed per area into windows."""
+    def demand(self, sp5_holiday_dates: set[str], holiday_dates: set[str], generic_only: bool = False) -> list[dict]:
+        """5SHDEM (per group, shift and day index) and 5SPDEM (per date) summed per area into windows.
+        `generic_only` returns the weekday and HOL rules only (for the comparison with the history)."""
         regular = defaultdict(lambda: [0, 0, True])  # (area, idx, sp5 shift) -> [min, max, max complete]
         for r in self.table("5SHDEM"):
             shift = self.shift_by_sp5.get(r.get("SHIFTID"))
@@ -563,6 +570,8 @@ class _Import:
             if has_holiday[area]:
                 hol = mix_for_index(area, HOLIDAY_INDEX)
                 rules += self._rules(area, ["HOL"], None, windows(hol, hol))
+        if generic_only:
+            return rules
         # Dated rules where the generic rules do not match the exact staffing of a day (the day after a
         # holiday, holidays, special demand, the first day of the month).
         draft = {"demand": rules}
@@ -583,6 +592,64 @@ class _Import:
     def _rules(area: str, days: list[str], on: str | None, windows) -> list[dict]:
         return [{"areaId": area, "days": days, "date": on, "from": hhmm(a), "to": hhmm(b), "min": c, "max": m}
                 for a, b, c, m in windows]
+
+    def demand_from_history(self, holiday_dates: set[str], sp5_rules: list[dict]) -> list[dict]:
+        """Demand from the real staffing in the history window: per area and day type (MON..SUN, HOL from the
+        holidays of the history) the median over all days of that type of the people on duty at once, in segments
+        between the boundaries of the area's worked shifts. A duty counts on the day it starts. Only duties of
+        exported people count; the others are reported (counts only) next to the peak of the SP5 demand."""
+        end = self.first - timedelta(days=1)
+        everyone = {e.get("ID"): {"id": f"E{e.get('ID')}"} for e in self.table("5EMPL", required=True)}
+        exported = {p["id"] for p in self.person_by_sp5.values()}
+        by_day, counted, left_out = defaultdict(list), Counter(), Counter()
+        days = [self.history_start + timedelta(days=k) for k in range((end - self.history_start).days + 1)]
+
+        def day_type(d: date) -> str:
+            return "HOL" if d.isoformat() in holiday_dates else WEEKDAY_CODES[d.weekday()]
+
+        for pid, d, s in self.duties(self.history_start, end, everyone, quiet=True):
+            if pid not in exported:
+                left_out[(s["areaId"], day_type(d))] += 1
+                continue
+            counted[(s["areaId"], day_type(d))] += 1
+            by_day[(s["areaId"], d)].append(interval(s["start"], s["end"]))
+        rules, months = [], self.history_months
+        codes = [*WEEKDAY_CODES, "HOL"]
+        for area in (a["id"] for a in self.mapping["areas"]):
+            points = sorted({x for (a, _), spans in by_day.items() if a == area for span in spans for x in span})
+            profiles = {}
+            for code in codes:
+                samples = [by_day.get((area, d), []) for d in days if day_type(d) == code]
+                profile = []
+                for a, b in pairwise(points):
+                    c = median_up([sum(1 for s, e in spans if s <= a and b <= e) for spans in samples]) \
+                        if samples else 0
+                    if c:
+                        profile.append((a, b, c))
+                profiles[code] = profile
+            groups = defaultdict(list)
+            for code in codes:
+                key = (code == "HOL", tuple((a, b, c, None) for a, b, c in start_day_windows(profiles[code])))
+                groups[key].append(code)
+            for (_, w), day_codes in groups.items():
+                rules += self._rules(area, day_codes, None, w)
+            peaks = []
+            for code in codes:
+                ours = max((c for _, _, c in profiles[code]), default=0)
+                sp5 = max((r["min"] for r in sp5_rules if r["areaId"] == area and not r["date"] and code in r["days"]),
+                          default=0)
+                peaks.append(f"{code} {ours}/{sp5}")
+                self.report_rows.append(("bedarf", "", area, "", counted[(area, code)], "", "", code, ours, sp5,
+                                         left_out[(area, code)]))
+            done, skipped = sum(counted[(area, c)] for c in codes), sum(left_out[(area, c)] for c in codes)
+            self.warn(f"Bedarf im Bereich {area}, Spitze je Tagestyp aus der Historie/aus SP5: {', '.join(peaks)}; "
+                      f"{done} Dienste in den {months} Monaten davor gezählt, {skipped} nicht gezählt (Mitarbeiter "
+                      "nicht übernommen)")
+        if self.demand_source == "history":
+            self.warn(f"Bedarf aus der Historie: Median je Bereich und Tagestyp über die {months} Monate davor")
+        else:
+            self.warn("Bedarf aus SP5 (5SHDEM, 5SPDEM); die Historie nur zum Vergleich")
+        return rules
 
     # ── duties ───────────────────────────────────────────────
 
@@ -792,7 +859,11 @@ class _Import:
         absences = self.absences()
         holidays, sp5_holiday_dates = self.holidays()
         holiday_dates = {h["date"] for h in holidays}
-        demand = self.demand(sp5_holiday_dates, holiday_dates)
+        demand = self.demand(sp5_holiday_dates, holiday_dates, generic_only=self.demand_source == "history")
+        if self.history_months:
+            from_history = self.demand_from_history(holiday_dates, demand)
+            if self.demand_source == "history":
+                demand = from_history
         previous = [{"personId": pid, "date": d.isoformat(), "shiftId": s["id"]}
                     for pid, d, s in self.duties(self.first - timedelta(days=PREVIOUS_DAYS),
                                                  self.first - timedelta(days=1))]
@@ -816,11 +887,14 @@ class _Import:
 
 def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = None,
                history_months: int = HISTORY_MONTHS, areas_from_history: int | None = None,
-               report: list | None = None, shifts_from_history: int | None = None) -> tuple[dict, list[str]]:
+               report: list | None = None, shifts_from_history: int | None = None,
+               demand: str = "history") -> tuple[dict, list[str]]:
     """Read the SP5 folder (never written) and return the dataset of the months `month`..`to` and the warnings.
     `report` (a list) receives the rows (check, person id, area, shift code, duties in the history window, area
-    from groups, restriction): check "bereich" per person and area worked or held, check "schicht" per person and
-    shift of their areas."""
+    from groups, restriction, day type, peak demand from the history, peak demand from SP5, duties left out): check
+    "bereich" per person and area worked or held, check "schicht" per person and shift of their areas, check
+    "bedarf" per area and day type (no person; duties counted and left out because the person is not exported).
+    `demand` "history" takes the demand from the staffing in the history window, "sp5" from the SP5 demand."""
     validate_mapping(mapping)
     months = [month]
     while to and months[-1] < to:
@@ -833,11 +907,17 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     for option in (areas_from_history, shifts_from_history):
         if option is not None and (option < 1 or not history_months):
             raise Sp5Error("Bereiche und Schichten aus Diensten brauchen eine Mindestzahl ab 1 und eine Historie")
+    if demand not in DEMAND_SOURCES:
+        raise Sp5Error(f"Bedarf {demand!r}: erlaubt sind {' oder '.join(DEMAND_SOURCES)}")
+    if demand == "history" and not history_months:
+        raise Sp5Error("Bedarf aus der Historie braucht eine Historie (--history-months ab 1); ohne Historie "
+                       "--demand sp5 angeben")
     folder = Path(folder)
     if not folder.is_dir():
         raise Sp5Error(f"SP5-Ordner nicht gefunden: {folder}")
-    job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history)
+    job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history, demand)
     dataset = job.run()
     if report is not None:
-        report.extend(sorted(job.report_rows, key=lambda r: (r[0], int(r[1][1:]), r[2], r[3])))
+        rows = [r + ("",) * (REPORT_COLUMNS - len(r)) for r in job.report_rows]
+        report.extend(sorted(rows, key=lambda r: (r[0], int(r[1][1:]) if r[1] else 0, r[2], r[3])))
     return dataset, job.warnings
