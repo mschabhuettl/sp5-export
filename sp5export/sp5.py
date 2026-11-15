@@ -38,7 +38,7 @@ DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
 TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
 DEMAND_SOURCES = ("history", "sp5")
-REPORT_COLUMNS = 18
+REPORT_COLUMNS = 23
 MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
 MIX_MIN_DUTIES = 10  # default: people with fewer counted duties in the history window get no shift mix
 # Duties in the planning months on shifts in ignoreShifts become absences of this type (only when there are any).
@@ -268,6 +268,8 @@ class _Import:
         ignore = self.mapping.get("ignoreShifts", [])
         self.shift_by_sp5: dict[int, dict] = {}
         self.without_area: dict[int, tuple[str, str, float]] = {}  # SP5 id -> (short, why, hours of a duty)
+        # The other shifts that are not taken: hidden, without times, longer than 12 hours (same tuples).
+        self.dropped_shifts: dict[int, tuple[str, str, float]] = {}
 
         def times_of(r: dict) -> Counter:
             times = Counter()
@@ -286,6 +288,7 @@ class _Import:
         for r in self.table("5SHIFT", required=True):
             sp5_id, short = r.get("ID"), _text(r.get("SHORTNAME"))
             if r.get("HIDE"):
+                self.dropped_shifts[sp5_id] = (short, "ausgeblendet", hours_of(times_of(r)))
                 continue
             if _any(ignore, short):
                 self.without_area[sp5_id] = (short, "ignoriert", hours_of(times_of(r)))
@@ -298,6 +301,7 @@ class _Import:
             times = times_of(r)
             if not times:
                 self.warn(f"Schicht ohne Dienstzeit ignoriert: SP5-Id {sp5_id}, Kürzel {short!r}")
+                self.dropped_shifts[sp5_id] = (short, "ohne_dienstzeit", 0.0)
                 continue
             (start, end), _ = times.most_common(1)[0]
             if len(times) > 1:
@@ -307,6 +311,7 @@ class _Import:
             if e - s > MAX_DUTY_MINUTES:
                 self.warn(f"Schicht {short!r} (SP5-Id {sp5_id}) dauert mehr als 12 Stunden ({start}-{end}) und "
                           "wird nicht übernommen")
+                self.dropped_shifts[sp5_id] = (short, "zu_lang", (e - s) / 60)
                 continue
             category = rule.get("category") or _category(start, end)
             color = r.get("COLORBK")
@@ -380,6 +385,9 @@ class _Import:
         hours = self._weekly_hours(e, base, start, end)
         if hours is not None and base != 1 and abs(hours - float(e.get("HRSWEEK") or 0)) >= 0.005:
             self.stale += 1
+            # The value written is the one from CALCBASE (none when it is 0: the person is not exported).
+            self.report_rows.append(("wochenstunden", f"E{eid}", *[""] * 11, hours if hours > 0 else "", *[""] * 6,
+                                     base, float(e.get("HRSWEEK") or 0), hours))
         if hours is None or hours <= 0:
             if hours is not None:
                 self.warn(f"Mitarbeiter E{eid} hat keine Wochenstunden (CALCBASE {base}) und wird nicht übernommen")
@@ -670,14 +678,17 @@ class _Import:
         everyone = {e.get("ID"): {"id": f"E{e.get('ID')}"} for e in self.table("5EMPL", required=True)}
         exported = {p["id"] for p in self.person_by_sp5.values()}
         by_day, counted, left_out = defaultdict(list), Counter(), Counter()
+        self.rejected: list = []  # rows on shifts not taken, for dropped_report
+        self.left_out_shifts: Counter = Counter()  # shift id -> duties of people not exported
         days = [self.history_start + timedelta(days=k) for k in range((end - self.history_start).days + 1)]
 
         def day_type(d: date) -> str:
             return "HOL" if d.isoformat() in holiday_dates else WEEKDAY_CODES[d.weekday()]
 
-        for pid, d, s in self.duties(self.history_start, end, everyone, quiet=True):
+        for pid, d, s in self.duties(self.history_start, end, everyone, quiet=True, rejected=self.rejected):
             if pid not in exported:
                 left_out[(s["areaId"], day_type(d))] += 1
+                self.left_out_shifts[s["id"]] += 1
                 continue
             counted[(s["areaId"], day_type(d))] += 1
             by_day[(s["areaId"], d)].append(interval(s["start"], s["end"]))
@@ -744,15 +755,79 @@ class _Import:
         self.warn(f"Schichten ohne Bereich: {len(rows)} Schichten, {sum(r[2] for r in rows)} Dienste, "
                   f"{sum(r[3] for r in rows):.1f} Stunden in den {months} Monaten davor")
 
+    def dropped_report(self) -> None:
+        """The duties of the history window that the dataset leaves out because of their shift or their person,
+        from the reading of demand_from_history: one line per reason (counts and hours) and report rows per shift.
+        The rows of exported people on shifts not taken are exactly the rows of the warning "N Dienste ... mit
+        nicht zugeordneter Schicht ignoriert" of the history window; not mapped and ignored are exactly the
+        duties of unmapped_report, hidden and long or timeless shifts are counted the same way, "sonstige" are the
+        other rows (no shift of 5SHIFT, a day of full-day absence, a second row of the day). People not exported:
+        their duties on shifts taken (the "nicht gezählt" of the demand lines), and their rows on other shifts."""
+        window = f"{self.history_start}..{self.first - timedelta(days=1)}"
+        exported = {p["id"] for p in self.person_by_sp5.values()}
+        counts = Counter()  # (reason, SP5 shift id) -> duties
+        for pid, sid, what in self.rejected:
+            if pid not in exported:
+                counts[("mitarbeiter_und_schicht_nicht_uebernommen", sid)] += 1
+            elif what != "gezaehlt":
+                counts[(what, sid)] += 1
+            else:
+                counts[((self.without_area.get(sid) or self.dropped_shifts[sid])[1].replace(" ", "_"), sid)] += 1
+        by_id = {s["id"]: (sp5_id, s) for sp5_id, s in self.shift_by_sp5.items()}
+        for shift_id, n in self.left_out_shifts.items():
+            sp5_id, _ = by_id[shift_id]
+            counts[("mitarbeiter_nicht_uebernommen", sp5_id)] += n
+
+        def code_hours(sid) -> tuple[str, float]:
+            if sid in self.shift_by_sp5:
+                a, b = interval(self.shift_by_sp5[sid]["start"], self.shift_by_sp5[sid]["end"])
+                return self.shift_by_sp5[sid]["code"], (b - a) / 60
+            short, _, hours = self.without_area.get(sid) or self.dropped_shifts.get(sid) or ("", "", 0.0)
+            return short, hours
+
+        totals = defaultdict(lambda: [0, 0.0])
+        for (why, sid), n in sorted(counts.items(), key=lambda x: (x[0][0], str(x[0][1]))):
+            code, hours = code_hours(sid)
+            totals[why][0] += n
+            totals[why][1] += n * hours
+            self.report_rows.append(("verworfen", "", "", code, n, *[""] * 6, f"{n * hours:.1f}", *[""] * 6, why,
+                                     "" if sid is None else str(sid)))
+
+        def total(*whys) -> str:
+            n, hours = (sum(totals[w][i] for w in whys) for i in (0, 1))
+            return f"{n} Dienste, {hours:.1f} Stunden"
+
+        head = f"Verworfene Dienste {window}"
+        self.warn(f"{head}, Schicht nicht zugeordnet: {total('nicht_zugeordnet')}")
+        self.warn(f"{head}, Schicht ignoriert (ignoreShifts): {total('ignoriert')}")
+        self.warn(f"{head}, Schicht ausgeblendet (HIDE): {total('ausgeblendet')}")
+        self.warn(f"{head}, Schicht länger als 12 Stunden oder ohne Dienstzeit: {total('zu_lang', 'ohne_dienstzeit')}")
+        other = ("unbekannte_schicht", "abwesenheit", "anderer_eintrag")
+        self.warn(f"{head}, sonstige: {total(*other)} ({totals[other[0]][0]} ohne Schicht in 5SHIFT, "
+                  f"{totals[other[1]][0]} an Tagen mit ganztägiger Abwesenheit, {totals[other[2]][0]} neben einem "
+                  "anderen Eintrag desselben Tags)")
+        shift_rows = sum(n for (why, _), n in counts.items() if not why.startswith("mitarbeiter_"))
+        self.warn(f"{head}: zusammen {shift_rows} Dienste übernommener Mitarbeiter auf Schichten, die nicht "
+                  "übernommen werden (wie die Warnung '... Dienste "
+                  f"{window} mit nicht zugeordneter Schicht ignoriert')")
+        self.warn(f"{head}, Mitarbeiter nicht übernommen: {total('mitarbeiter_nicht_uebernommen')} auf übernommenen "
+                  "Schichten (die nicht gezählten der Bedarfszeilen), dazu "
+                  f"{total('mitarbeiter_und_schicht_nicht_uebernommen')} auf Schichten, die nicht übernommen werden")
+
     # ── duties ───────────────────────────────────────────────
 
     def duties(self, start: date, end: date, people: dict[int, dict] | None = None,
-               quiet: bool = False, lost: dict | None = None) -> list[tuple[str, date, dict]]:
+               quiet: bool = False, lost: dict | None = None,
+               rejected: list | None = None) -> list[tuple[str, date, dict]]:
         """(person id, date, shift) from 5MASHI and 5SPSHI in [start, end], in-scope only. `people` replaces the
         exported people (SP5 id -> person); `quiet` leaves out the warnings (a second pass over the same days);
         `lost` receives (person id, date) -> SP5 shift id of the duties left out because their shift is in
-        `without_area` (not those of absent days or of days with a duty that is taken)."""
-        result, unknown, loose = {}, 0, {}
+        `without_area` (not those of absent days or of days with a duty that is taken). `rejected` receives
+        (person id, SP5 shift id, what) for every row the warning about duties with a shift not mapped counts:
+        what is "unbekannte_schicht" (no shift of 5SHIFT), "abwesenheit" (a day of full-day absence),
+        "gezaehlt" (the first row of the day on a shift of `without_area`, or of `dropped_shifts`, without a duty
+        taken; for `without_area` exactly the duties of `lost`) or "anderer_eintrag" (any other row)."""
+        result, unknown, loose, first, rows_out = {}, 0, {}, {}, []
         people = self.person_by_sp5 if people is None else people
         warn = (lambda text: None) if quiet else self.warn
         # 5SPSHI rows with a shift replace the duty of the day (sp5lib: _replaced_days, get_schedule), whatever
@@ -781,9 +856,13 @@ class _Import:
             shift = self.shift_by_sp5.get(r.get("SHIFTID"))
             if shift is None:
                 unknown += 1
+                sid, key = r.get("SHIFTID"), (person["id"], d)
+                rows_out.append((key, sid, id(r)))
                 # Not when an earlier row (a deviation) already took the day: that duty was replaced.
-                if r.get("SHIFTID") in self.without_area and (person["id"], d) not in result:
-                    loose.setdefault((person["id"], d), r.get("SHIFTID"))
+                if sid in self.without_area and key not in result:
+                    loose.setdefault(key, sid)
+                if (sid in self.without_area or sid in self.dropped_shifts) and key not in result:
+                    first.setdefault((key, sid in self.without_area), id(r))
                 if id(r) in replaced:  # the deviation still replaces the planned duty of the day
                     result.setdefault((person["id"], d), None)
                 continue
@@ -796,6 +875,13 @@ class _Import:
         absent_days = self._absent(start, end, people=people)
         if lost is not None:
             lost.update({k: v for k, v in loose.items() if k not in result and k not in absent_days})
+        if rejected is not None:
+            firsts = set(first.values())
+            for key, sid, rid in rows_out:
+                what = "unbekannte_schicht" if sid not in self.without_area and sid not in self.dropped_shifts \
+                    else "abwesenheit" if key in absent_days \
+                    else "gezaehlt" if rid in firsts and key not in result else "anderer_eintrag"
+                rejected.append((key[0], sid, what))
         absent = absent_days & result.keys()
         if absent:
             warn(f"{len(absent)} Dienste {start}..{end} an Tagen mit ganztägiger Abwesenheit nicht übernommen")
@@ -1008,6 +1094,7 @@ class _Import:
             if self.demand_source == "history":
                 demand = from_history
             self.unmapped_report()
+            self.dropped_report()
         previous = [{"personId": pid, "date": d.isoformat(), "shiftId": s["id"]}
                     for pid, d, s in self.duties(self.first - timedelta(days=PREVIOUS_DAYS),
                                                  self.first - timedelta(days=1))]

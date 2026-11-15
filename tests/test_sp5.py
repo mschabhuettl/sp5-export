@@ -719,11 +719,24 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     lines = report.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
         "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;" \
-        "wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage"
+        "wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;" \
+        "wochenstunden_calcbase"
     rows = [line.split(";") for line in lines[1:]]
-    assert {r[0] for r in rows} == {"bedarf", "bereich", "person", "schicht"}
-    assert all(len(r) == 18 and r[4].isdigit() for r in rows)
-    assert all(r[13:] == [""] * 5 for r in rows if r[0] != "person")
+    assert {r[0] for r in rows} == {"bedarf", "bereich", "person", "schicht", "verworfen", "wochenstunden"}
+    assert all(len(r) == 23 for r in rows)
+    assert all(r[4].isdigit() for r in rows if r[0] != "wochenstunden")
+    assert all(r[13:] == [""] * 10 for r in rows if r[0] not in ("person", "verworfen", "wochenstunden"))
+    assert all(r[18:] == [""] * 5 for r in rows if r[0] == "person")
+    # Weekly hours: one row per person counted in the summary line, the value written is the CALCBASE value.
+    hours = {p["id"]: p["weeklyHours"] for p in imported[0]["people"]}
+    weekly = [r for r in rows if r[0] == "wochenstunden"]
+    assert weekly and all(r[2:13] == [""] * 11 and r[14:20] == [""] * 6 and r[13] == r[22] == str(hours[r[1]])
+                          and r[20] in ("0", "2") and r[21] != r[22] for r in weekly)
+    stale = next(w for w in imported[1] if w.startswith("Wochenstunden nach CALCBASE"))
+    assert stale.endswith(f"HRSWEEK weicht bei {len(weekly)} davon ab")
+    dropped = [r for r in rows if r[0] == "verworfen"]
+    assert dropped and all(r[1] == r[2] == "" and r[18].startswith("mitarbeiter_") for r in dropped)
+    rows = [r for r in rows if r[0] not in ("verworfen", "wochenstunden")]
     assert all(re.match(r"E\d+$", r[1]) and r[7:13] == ["", "", "", "", "", ""] for r in rows if r[0] != "bedarf")
     assert all(r[3] == "" and r[5] in ("ja", "nein") and r[6] == "" for r in rows if r[0] == "bereich")
     demand = [r for r in rows if r[0] == "bedarf"]
@@ -798,8 +811,8 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
     assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
-                                              "", "", "", ""] + [""] * 5
-    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 5
+                                              "", "", "", ""] + [""] * 10
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 10
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
@@ -911,7 +924,7 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
     demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
     assert list(demand) == [*CODES, "HOL"]
-    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 5
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 10
     assert sum(int(r[4]) for r in demand.values()) == counted
     assert sum(int(r[10]) for r in demand.values()) == left_out
     # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
@@ -940,9 +953,9 @@ def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path
         "Schichten ohne Bereich: 2 Schichten, 13 Dienste, 116.0 Stunden in den 1 Monaten davor"]
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
     assert [r for r in rows if r[0] in ("ignoriert", "nicht_zugeordnet")] == [
-        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 5,
-        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 5]
-    assert all(len(r) == 18 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
+        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 10,
+        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 10]
+    assert all(len(r) == 23 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
     assert result == before  # the dataset does not know these duties
 
     none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
@@ -1238,8 +1251,8 @@ def test_shift_mix_is_the_share_of_the_counted_duties(folder, tmp_path):
             if r[0] == "person"}
     assert set(rows) == set(people)
     assert rows["E9201"] == ["person", "E9201", "", "", "10", *[""] * 8, "40.0", "HX", "DAY 0.900, NIGHT 0.100",
-                             "HX 1.000", "1"]
-    assert rows["E9203"][13:] == ["40.0", "HX HY", "EARLY 0.400, DAY 0.600", "HX 0.600, HY 0.400", "0"]
+                             "HX 1.000", "1", *[""] * 5]
+    assert rows["E9203"][13:18] == ["40.0", "HX HY", "EARLY 0.400, DAY 0.600", "HX 0.600, HY 0.400", "0"]
     assert rows["E9204"][4] == "9" and rows["E9204"][15:17] == ["", ""]
     assert rows["E9205"][4] == "9"  # the duty on the day of absence does not count
 

@@ -89,7 +89,8 @@ def main(argv: list[str] | None = None) -> int:
         w.writerow(["pruefung", "person", "bereich", "schicht", "dienste_historie", "bereich_aus_gruppen",
                     "einschraenkung", "tagestyp", "spitze_historie", "spitze_sp5",
                     "dienste_nicht_uebernommen", "stunden_historie", "spitze_historie_max", "wochenstunden",
-                    "bereiche", "mix_kategorien", "mix_bereiche", "auf_anfrage"])
+                    "bereiche", "mix_kategorien", "mix_bereiche", "auf_anfrage", "grund", "sp5_schicht", "calcbase",
+                    "hrsweek", "wochenstunden_calcbase"])
         w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed
