@@ -147,7 +147,8 @@ Wie die Zahlen zusammenpassen:
 - `nicht zugeordnet` und `ignoriert` sind genau die Dienste der Meldung
   [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich): je Person und Tag der erste Eintrag,
   wenn der Tag keinen übernommenen Dienst und keine ganztägige Abwesenheit hat. Ausgeblendete und zu lange
-  Schichten oder Schichten ohne Dienstzeit werden ebenso gezählt.
+  Schichten oder Schichten ohne Dienstzeit werden ebenso gezählt; je Person und Tag zählt aber nur ein Eintrag,
+  und hat der Tag einen Dienst einer Schicht ohne Bereich, ist es dieser.
 - `sonstige` sind die übrigen Einträge: Schicht-Id, die es in 5SHIFT nicht gibt (Stunden 0), Einträge an Tagen
   mit ganztägiger Abwesenheit, und Einträge neben einem anderen Eintrag desselben Tags (der Tag hat einen
   übernommenen Dienst, oder ein früherer Eintrag zählt schon).
