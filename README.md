@@ -44,7 +44,9 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | `--demand history\|sp5` | Bedarf aus der tatsächlichen Besetzung in der Historie (Standard) oder aus dem SP5-Bedarf (siehe unten) |
 | `--areas-from-history N` | ergänzt Bereiche, in denen jemand in der Historie mindestens N Dienste hatte (siehe unten) |
 | `--shifts-from-history N` | Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "nur auf Anfrage" (siehe unten) |
-| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich (siehe unten) |
+| `--mix-min-duties N` | Schichtmix nur für Personen mit mindestens N Diensten in der Historie, Standard 10 (siehe unten) |
+| `--no-shift-mix` | keinen Schichtmix schreiben; der Datensatz ist dann derselbe wie vor dieser Option |
+| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen (siehe unten) |
 
 Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
 gespeicherten Plan des Monats davor; ist der noch nicht geplant, beginnt der Monat ohne Vormonatsdienste.
@@ -70,11 +72,12 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max
-bedarf;;AN;;412;;;MON;3;8;17;;4
-bereich;E12;AN;;41;ja;;;;;;;
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;
-nicht_zugeordnet;;;S1;120;;;;;;;960.0;
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage
+bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;
+bereich;E12;AN;;41;ja;;;;;;;;;;;;
+person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;
 ```
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
@@ -82,7 +85,9 @@ Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie 
 [Schichten aus der Historie](#schichten-aus-der-historie)); Zeilen `bedarf` je Bereich und Tagestyp ohne Person
 (siehe [Bedarf aus der Historie](#bedarf-aus-der-historie)); Zeilen `nicht_zugeordnet` und `ignoriert` je
 Schicht ohne Bereich, ohne Person, mit `dienste_historie` und `stunden_historie` (siehe
-[Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich)). Die Datei enthält keine Namen, nur SP5-Ids und
+[Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich)); Zeilen `person` je übernommener
+Person mit den angehängten Spalten `wochenstunden` bis `auf_anfrage` (siehe
+[Schichtmix aus der Historie](#schichtmix-aus-der-historie)); die übrigen Zeilen lassen diese Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
 Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
@@ -172,6 +177,44 @@ Oberfläche nicht als eigene Liste. Wird jemand trotzdem so eingeplant, zeigt di
 Empfehlung: zuerst ohne die Option mit `--report bericht.csv` laufen lassen und die Zeilen `schicht` ansehen,
 dann `--shifts-from-history 3`. In den Zeilen `schicht` steht in `einschraenkung` `auf_anfrage` (ergänzt), `sp5`
 (Einschränkung aus SP5 belassen), `zu_kurze_historie` (nicht bewertet) oder nichts.
+
+### Schichtmix aus der Historie
+
+Ziel des Grundimports ist, dass Dispofold jede Person so einplant, wie sie in SP5 tatsächlich arbeitet: Wer zu
+90 % Tagdienste und zu 10 % Nachtdienste hat, soll in Dispofold ungefähr diese Mischung bekommen. Dafür
+schreibt der Export je Person das optionale Feld `shiftMix`:
+
+```json
+"shiftMix": {"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"AN": 0.7, "DR": 0.3}}
+```
+
+- Gezählt werden die Dienste der Historie wie für die Historieneinträge: nur Schichten mit Bereich (nicht
+  `ignoreShifts`), Sonderdienste wie oben, an Tagen mit ganztägiger Abwesenheit kein Dienst.
+- `categories`: Anteil je Schichtkategorie (`EARLY`, `DAY`, `LATE`, `NIGHT`) an allen gezählten Diensten der
+  Person. Es gilt die Kategorie, die der Export für die Schicht in `shifts[].category` schreibt (aus der
+  Zuordnung oder aus der Uhrzeit, siehe [Zuordnungsdatei](#zuordnungsdatei)).
+- `areas`: Anteil je Bereich, nur über die Dienste in den Bereichen der Person (`areaIds`, nach
+  `--areas-from-history`). Dienste in anderen Bereichen fallen dafür weg und die übrigen Anteile werden neu
+  auf 1 verteilt, weil Dispofold nur Bereiche der Person annimmt. Hat jemand nur Dienste in fremden Bereichen,
+  ist `areas` leer.
+- Anteile auf drei Stellen gerundet, Anteile 0 weggelassen; den Rundungsrest bekommt der größte Anteil, so dass
+  jede Liste genau 1 ergibt.
+- Nur wer in der Historie mindestens 10 Dienste hat (`--mix-min-duties N`), bekommt einen Mix; bei allen
+  anderen fehlt das Feld. Ohne Historie bekommt niemand einen Mix. `--no-shift-mix` schaltet den Mix ab.
+- Auf stderr steht nur die Zahl der Personen mit Mix und die der Personen unter der Mindestzahl.
+
+Dispofold nimmt den Mix als Vorgabe für die Planung; die Planung kann ihn dort je Person ändern oder löschen.
+Dispofold lehnt beim Import einen Mix ab (Fehlercode `import.badShiftMix`), wenn ein Anteil außerhalb von 0
+bis 1 liegt, eine nicht leere Liste nicht innerhalb von 0,01 auf 1 kommt oder ein Bereich nicht zur Person
+gehört. Der Datensatz bleibt Version 2; ältere Datensätze ohne das Feld sind weiter gültig.
+
+**Durchsehen aller Personen:** `--report bericht.csv` schreibt je übernommener Person eine Zeile `person` mit
+SP5-Id (`person`), Diensten in der Historie (`dienste_historie`), `wochenstunden`, `bereiche` (durch Leerzeichen
+getrennt), Mix je Kategorie (`mix_kategorien`, z. B. `DAY 0.900, NIGHT 0.100`) und je Bereich (`mix_bereiche`)
+und der Zahl der Einschränkungen "nur auf Anfrage" (`auf_anfrage`, aus SP5 und aus `--shifts-from-history`).
+Ohne Mix (unter der Mindestzahl oder mit `--no-shift-mix`) bleiben die beiden Mix-Spalten leer. So lassen sich
+alle Personen einmal in einer Tabellenkalkulation durchsehen (nach `person` filtern); in Dispofold sind dann
+nur die Ausnahmen zu korrigieren.
 
 ### Bedarf aus der Historie
 
@@ -277,7 +320,8 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
   Wochen von `EMPSTART` bis `EMPEND` (ohne `EMPEND` wird die Person nicht übernommen). Gerundet auf zwei
   Stellen. Unter `0` ist `HRSWEEK` oft veraltet und wird nicht gelesen; eine Zeile nennt, wie viele Personen
   welche Grundlage haben und bei wie vielen `HRSWEEK` abweicht (nur Zahlen). Id `E<SP5-Id>`, `externalId` ist die SP5-Id. `EMPSTART`/`EMPEND` werden
-  `entryDate`/`exitDate`; Dispofold verplant Tage außerhalb nicht und rechnet das Soll anteilig.
+  `entryDate`/`exitDate`; Dispofold verplant Tage außerhalb nicht und rechnet das Soll anteilig. Mit genug
+  Diensten in der Historie kommt der Schichtmix dazu (siehe [Schichtmix aus der Historie](#schichtmix-aus-der-historie)).
 - **Schichten:** Id `S<SP5-Id>`, Kürzel, Name und Farbe aus SP5. Bei Zeiten je Wochentag gilt die
   häufigste Zeit. Schichten über 12 Stunden (die Standardregel `maxDutyHours` von Dispofold) werden nicht
   übernommen, weil Dispofold sonst den ganzen Import ablehnt. Ist `maxDutyHours` in Dispofold kleiner
@@ -326,6 +370,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schichten im Bereich AN: 4 Mitarbeiter mit keinem Dienst in mindestens einer Schicht des Bereichs ...` | Immer vorhanden (außer ohne Historie); siehe [Schichten aus der Historie](#schichten-aus-der-historie). |
 | `Schichten aus Diensten: 3 Mitarbeiter mit zu kurzer Historie ... nicht bewertet, 20 Paare ... mit Einschränkung aus SP5 belassen` | Immer vorhanden (außer ohne Historie). |
 | `Schichten aus Diensten (mindestens 3): 12 Einschränkungen 'nur auf Anfrage' ergänzt` | Nur mit `--shifts-from-history`. |
+| `Schichtmix aus der Historie: 120 Mitarbeiter mit Mix, 14 mit weniger als 10 Diensten in den 12 Monaten davor ohne Mix` | Immer vorhanden außer mit `--no-shift-mix`; siehe [Schichtmix aus der Historie](#schichtmix-aus-der-historie). |
 | `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3-4/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
 | `Schicht 'S1' nicht zugeordnet: 120 Dienste, 960.0 Stunden ...` oder `Schicht 'X2' ignoriert: ...` | Je Schicht ohne Bereich mit Diensten in der Historie; siehe [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich). Nicht zugeordnet: in `shifts` eintragen, wenn Dispofold sie planen soll. Ignoriert ist Absicht. |
 | `Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden ...` | Immer vorhanden (außer ohne Historie): die Summe dazu. |
