@@ -716,17 +716,17 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     _, _, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
     lines = report.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
-        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen"
+        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie"
     rows = [line.split(";") for line in lines[1:]]
     assert {r[0] for r in rows} == {"bedarf", "bereich", "schicht"}
-    assert all(len(r) == 11 and r[4].isdigit() for r in rows)
-    assert all(re.match(r"E\d+$", r[1]) and r[7:] == ["", "", "", ""] for r in rows if r[0] != "bedarf")
+    assert all(len(r) == 12 and r[4].isdigit() for r in rows)
+    assert all(re.match(r"E\d+$", r[1]) and r[7:] == ["", "", "", "", ""] for r in rows if r[0] != "bedarf")
     assert all(r[3] == "" and r[5] in ("ja", "nein") and r[6] == "" for r in rows if r[0] == "bereich")
     demand = [r for r in rows if r[0] == "bedarf"]
     assert [(r[2], r[7]) for r in demand] == [(a["id"], c) for a in sorted(imported[0]["areas"], key=lambda a: a["id"])
                                               for c in ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL")]
     assert all(r[1] == r[3] == r[5] == r[6] == "" and r[8].isdigit() and r[9].isdigit() and r[10].isdigit()
-               for r in demand)
+               and r[11] == "" for r in demand)
     codes = {s["code"] for s in imported[0]["shifts"]}
     assert all(r[3] in codes and r[5] == "" and r[6] in ("", "sp5", "zu_kurze_historie")
                for r in rows if r[0] == "schicht")
@@ -794,8 +794,8 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
     assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
-                                              "", ""]
-    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", ""]
+                                              "", "", ""]
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", ""]
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
@@ -906,11 +906,42 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
     demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
     assert list(demand) == [*CODES, "HOL"]
-    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3"]
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", ""]
     assert sum(int(r[4]) for r in demand.values()) == counted
     assert sum(int(r[10]) for r in demand.values()) == left_out
     # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
     assert int(demand["TUE"][10]) == 4 + 1  # 4 Tuesdays of the excluded person, 2026-12-01 of the hidden one
+
+
+def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    hx.mapping["shifts"][0]["match"] = "H[1-4]"  # H5 and H6 get no area
+    hx.mapping["ignoreShifts"].append("H6")
+    hx.duty(9201, "H1", DECEMBER)
+    hx.duty(9202, "H1", DECEMBER[10:11])  # a mapped duty is not reported
+    hx.add("5GRASG", EMPLOYEEID=9206, GROUPID=next(g["ID"] for g in hx.rows("5GROUP") if g["NAME"] == "Ehrenamt"))
+    before, _, _ = hx.export("before.json")
+    hx.duty(9203, "H5", DECEMBER[:3])  # unmapped, 12 hours each
+    hx.duty(9202, "H6", DECEMBER[:10])  # ignored, 8 hours each
+    hx.duty(9206, "H5", DECEMBER[:4])  # not exported: not counted
+    hx.duty(9203, "H6", [date(2026, 11, 30)])  # before the history window: not counted
+    report = tmp_path / "bericht.csv"
+    result, warnings, proc = hx.export("after.json", "--report", str(report))
+
+    lines = [w for w in warnings if w.startswith(("Schicht 'H", "Schichten ohne Bereich"))]
+    assert lines == [
+        "Schicht 'H6' ignoriert: 10 Dienste, 80.0 Stunden in den 1 Monaten davor",
+        "Schicht 'H5' nicht zugeordnet: 3 Dienste, 36.0 Stunden in den 1 Monaten davor",
+        "Schichten ohne Bereich: 2 Schichten, 13 Dienste, 116.0 Stunden in den 1 Monaten davor"]
+    rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
+    assert [r for r in rows if r[0] in ("ignoriert", "nicht_zugeordnet")] == [
+        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0"],
+        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0"]]
+    assert all(len(r) == 12 for r in rows) and rows[0][-1] == "stunden_historie"
+    assert result == before  # the dataset does not know these duties
+
+    none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
+    assert not [w for w in warnings if w.startswith(("Schicht 'H", "Schichten ohne Bereich"))]
 
 
 def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):

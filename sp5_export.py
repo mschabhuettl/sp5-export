@@ -82,7 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     def write_report(f):
         w = csv.writer(f, delimiter=";")
         w.writerow(["pruefung", "person", "bereich", "schicht", "dienste_historie", "bereich_aus_gruppen",
-                    "einschraenkung", "tagestyp", "spitze_historie", "spitze_sp5", "dienste_nicht_uebernommen"])
+                    "einschraenkung", "tagestyp", "spitze_historie", "spitze_sp5",
+                    "dienste_nicht_uebernommen", "stunden_historie"])
         w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed

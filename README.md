@@ -70,16 +70,19 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen
-bedarf;;AN;;412;;;MON;3;8;17
-bereich;E12;AN;;41;ja;;;;;
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie
+bedarf;;AN;;412;;;MON;3;8;17;
+bereich;E12;AN;;41;ja;;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0
 ```
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
 (`bereich_aus_gruppen` ja oder nein); Zeilen `schicht` je Person und Schicht ihrer Bereiche (siehe
 [Schichten aus der Historie](#schichten-aus-der-historie)); Zeilen `bedarf` je Bereich und Tagestyp ohne Person
-(siehe [Bedarf aus der Historie](#bedarf-aus-der-historie)). Die Datei enthält keine Namen, nur SP5-Ids und
+(siehe [Bedarf aus der Historie](#bedarf-aus-der-historie)); Zeilen `nicht_zugeordnet` und `ignoriert` je
+Schicht ohne Bereich, ohne Person, mit `dienste_historie` und `stunden_historie` (siehe
+[Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich)). Die Datei enthält keine Namen, nur SP5-Ids und
 Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
@@ -88,6 +91,24 @@ Zuordnung vergleichen und die Zuordnung oder die Gruppen in SP5 korrigieren.
 Ausbildungsdienste zählen nicht, wenn ihre Schichten wie vorgesehen in `ignoreShifts` stehen: Sie haben dann
 keinen Bereich. Bewusst nicht aus der Historie abgeleitet werden Wünsche und Einschränkungen nach Art "nie":
 Gewohnheiten der Vergangenheit sind keine Regeln.
+
+### Dienste auf Schichten ohne Bereich
+
+Dienste auf Schichten, die die Zuordnung keinem Bereich zuweist, kommen nicht in den Datensatz; ihre Stunden
+hätten in Dispofold keinen Platz. Der Export meldet sie bei jedem Lauf (außer ohne Historie) nur als Zahlen und
+Kürzel, je Schicht mit mindestens einem Dienst, nach Stunden absteigend:
+
+```
+Warnung: Schicht 'S1' nicht zugeordnet: 120 Dienste, 960.0 Stunden in den 12 Monaten davor
+Warnung: Schicht 'X2' ignoriert: 40 Dienste, 320.0 Stunden in den 12 Monaten davor
+Warnung: Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden in den 12 Monaten davor
+```
+
+Gezählt werden die Dienste der Historie wie bei Bereichen und Bedarf, nur von übernommenen Mitarbeitern (nicht
+die ausgeschlossener, ausgeblendeter oder nicht beschäftigter) und ohne Tage mit ganztägiger Abwesenheit.
+Stunden sind die Dienstzeit der Schicht je Dienst (häufigste Zeit der Wochentage). Ausgeblendete Schichten
+fehlen in der Meldung. `nicht zugeordnet`: In der Zuordnung unter `shifts` eintragen, wenn Dispofold die Schicht
+planen soll. `ignoriert`: steht in `ignoreShifts`, also Absicht; nichts zu tun.
 
 ### Schichten aus der Historie
 
@@ -264,6 +285,8 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schichten aus Diensten: 3 Mitarbeiter mit zu kurzer Historie ... nicht bewertet, 20 Paare ... mit Einschränkung aus SP5 belassen` | Immer vorhanden (außer ohne Historie). |
 | `Schichten aus Diensten (mindestens 3): 12 Einschränkungen 'nur auf Anfrage' ergänzt` | Nur mit `--shifts-from-history`. |
 | `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
+| `Schicht 'S1' nicht zugeordnet: 120 Dienste, 960.0 Stunden ...` oder `Schicht 'X2' ignoriert: ...` | Je Schicht ohne Bereich mit Diensten in der Historie; siehe [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich). Nicht zugeordnet: in `shifts` eintragen, wenn Dispofold sie planen soll. Ignoriert ist Absicht. |
+| `Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden ...` | Immer vorhanden (außer ohne Historie): die Summe dazu. |
 | `Bedarf aus der Historie: Median ...` oder `Bedarf aus SP5 ...` | Immer vorhanden (außer ohne Historie): woher der Bedarf im Datensatz kommt. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
