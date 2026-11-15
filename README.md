@@ -146,7 +146,8 @@ den Diensten der Historie (`--history-months`, dieselben Dienste wie für die Hi
 - `min` des Abschnitts ist der Median dieser Zahlen, ein halber Wert wird aufgerundet (1, 1, 2, 2 ergibt 2);
   `max` bleibt leer. Benachbarte Abschnitte mit gleichem Wert werden ein Fenster (höchstens 24 Stunden),
   Abschnitte mit 0 fallen weg. Wochentage mit gleichen Fenstern werden eine Regel, dazu Regeln `HOL`; Regeln mit
-  Datum gibt es nicht.
+  Datum gibt es nicht. Ist ein Bereich an Feiertagen im Median nie besetzt, an anderen Tagen aber schon, bekommt
+  er eine Regel `HOL` mit `min` 0: Ohne `HOL`-Regel nähme Dispofold an Feiertagen die Wochentagsregeln.
 - Nach Mitternacht beginnt kein Dienst mehr, die Besetzung kann dort nur sinken. Diesen Teil schreibt der
   Export als Fenster, die alle zur letzten Grenze vor Mitternacht beginnen und sich addieren (Dispofold zählt
   überlappende Fenster zusammen). Beispiel: Tagdienst 07:00 bis 19:00 und zwei Nachtdienste 19:00 bis 07:00 und

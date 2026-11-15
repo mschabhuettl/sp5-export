@@ -633,6 +633,10 @@ class _Import:
                 groups[key].append(code)
             for (_, w), day_codes in groups.items():
                 rules += self._rules(area, day_codes, None, w)
+            if any(d.isoformat() in holiday_dates for d in days) and not profiles["HOL"] \
+                    and any(profiles[c] for c in WEEKDAY_CODES):
+                # Without HOL rules Dispofold takes the weekday rules on a holiday; a rule with 0 keeps it free.
+                rules += self._rules(area, ["HOL"], None, [(points[0], min(points[-1], points[0] + DAY), 0, None)])
             peaks = []
             for code in codes:
                 ours = max((c for _, _, c in profiles[code]), default=0)

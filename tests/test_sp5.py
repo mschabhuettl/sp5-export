@@ -947,8 +947,11 @@ def test_history_demand_takes_the_median_of_every_day(folder, tmp_path):
     hx.duty(9201, "H1", days("SAT", 1))  # 1 of 3 Saturdays -> 0
     hx.duty(9201, "H1", days("SUN", 2))  # 2 of 4 Sundays: 0, 0, 1, 1 -> 0.5 -> 1
     result, _, _ = hx.export("dataset.json")
-    assert _hx_rules(result) == [(("MON",), "07:00", "19:00", 2, None),
+    # Nobody on the holidays: a HOL rule with 0, otherwise Dispofold would take the weekday rules there.
+    assert _hx_rules(result) == [(("HOL",), "07:00", "19:00", 0, None), (("MON",), "07:00", "19:00", 2, None),
                                  (("WED", "FRI", "SUN"), "07:00", "19:00", 1, None)]
+    holidays = {h["date"] for h in result["holidays"]}
+    assert [r["min"] for r in rules_for_day(result, "HX", date(2027, 1, 6), holidays)] == [0]  # a Wednesday
 
 
 def test_median_rounds_half_up():
