@@ -46,7 +46,7 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | `--shifts-from-history N` | Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "nur auf Anfrage" (siehe unten) |
 | `--mix-min-duties N` | Schichtmix nur für Personen mit mindestens N Diensten in der Historie, Standard 10 (siehe unten) |
 | `--no-shift-mix` | keinen Schichtmix schreiben; der Datensatz ist dann derselbe wie vor dieser Option |
-| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen (siehe unten) |
+| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen, verworfene Dienste der Historie je Grund und Schicht, abweichende Wochenstunden (siehe unten) |
 
 Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
 gespeicherten Plan des Monats davor; ist der noch nicht geplant, beginnt der Monat ohne Vormonatsdienste.
@@ -72,12 +72,14 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage
-bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;
-bereich;E12;AN;;41;ja;;;;;;;;;;;;
-person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;
-nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase
+bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;
+bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;
+person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;
+verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;
+wochenstunden;E12;;;;;;;;;;;;30.0;;;;;;;2;40.0;30.0
 ```
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
@@ -87,7 +89,10 @@ Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie 
 Schicht ohne Bereich, ohne Person, mit `dienste_historie` und `stunden_historie` (siehe
 [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich)); Zeilen `person` je übernommener
 Person mit den angehängten Spalten `wochenstunden` bis `auf_anfrage` (siehe
-[Schichtmix aus der Historie](#schichtmix-aus-der-historie)); die übrigen Zeilen lassen diese Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
+[Schichtmix aus der Historie](#schichtmix-aus-der-historie)); Zeilen `verworfen` je Grund und Schicht mit
+`grund` und `sp5_schicht` (siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie)); Zeilen
+`wochenstunden` je Person, bei der `HRSWEEK` vom Wert nach `CALCBASE` abweicht (siehe
+[Wochenstunden nach CALCBASE](#wochenstunden-nach-calcbase)); die übrigen Zeilen lassen diese Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
 Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
@@ -112,8 +117,74 @@ Warnung: Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden in den
 Gezählt werden die Dienste der Historie wie bei Bereichen und Bedarf, nur von übernommenen Mitarbeitern (nicht
 die ausgeschlossener, ausgeblendeter oder nicht beschäftigter) und ohne Tage mit ganztägiger Abwesenheit.
 Stunden sind die Dienstzeit der Schicht je Dienst (häufigste Zeit der Wochentage). Ausgeblendete Schichten
-fehlen in der Meldung. `nicht zugeordnet`: In der Zuordnung unter `shifts` eintragen, wenn Dispofold die Schicht
+fehlen in der Meldung (siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie)). `nicht zugeordnet`: In der Zuordnung unter `shifts` eintragen, wenn Dispofold die Schicht
 planen soll. `ignoriert`: steht in `ignoreShifts`, also Absicht; nichts zu tun.
+
+### Verworfene Dienste der Historie
+
+Die Warnung `26 Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert` zählt mehr als die
+Meldung der Schichten ohne Bereich. Der Export teilt deshalb (außer ohne Historie) die Dienste der Historie, die
+nicht in den Datensatz kommen, nach Gründen auf, eine Zeile je Grund mit Diensten und Stunden, auch bei 0:
+
+```
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Schicht nicht zugeordnet: 4 Dienste, 48.0 Stunden
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Schicht ignoriert (ignoreShifts): 10 Dienste, 80.0 Stunden
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Schicht ausgeblendet (HIDE): 4 Dienste, 32.0 Stunden
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Schicht länger als 12 Stunden oder ohne Dienstzeit: 5 Dienste, 39.0 Stunden
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, sonstige: 3 Dienste, 12.0 Stunden (2 ohne Schicht in 5SHIFT, 1 an Tagen mit ganztägiger Abwesenheit, 0 neben einem anderen Eintrag desselben Tags)
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31: zusammen 26 Dienste übernommener Mitarbeiter auf Schichten, die nicht übernommen werden (wie die Warnung '... Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert')
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Mitarbeiter nicht übernommen: 29 Dienste, 256.0 Stunden auf übernommenen Schichten (die nicht gezählten der Bedarfszeilen), dazu 52 Dienste, 505.0 Stunden auf Schichten, die nicht übernommen werden
+```
+
+Wie die Zahlen zusammenpassen:
+
+- Die Warnung `... mit nicht zugeordneter Schicht ignoriert` zählt Einträge übernommener Mitarbeiter (Sonderdienste
+  5SPSHI, Ist-Plan 5MASHI, Dienste aus Zyklen) auf einer Schicht, die nicht im Datensatz ist, auch zweite
+  Einträge desselben Tags und Einträge an Tagen mit ganztägiger Abwesenheit. Die ersten fünf Gründe teilen
+  genau diese Einträge auf; ihre Summe steht in der Zeile `zusammen` und ist die Zahl dieser Warnung (für das
+  Fenster der Historie; die Warnung gibt es noch einmal für die Vormonatsdienste der letzten 7 Tage, die hier
+  nicht gezählt werden).
+- `nicht zugeordnet` und `ignoriert` sind genau die Dienste der Meldung
+  [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich): je Person und Tag der erste Eintrag,
+  wenn der Tag keinen übernommenen Dienst und keine ganztägige Abwesenheit hat. Ausgeblendete und zu lange
+  Schichten oder Schichten ohne Dienstzeit werden ebenso gezählt.
+- `sonstige` sind die übrigen Einträge: Schicht-Id, die es in 5SHIFT nicht gibt (Stunden 0), Einträge an Tagen
+  mit ganztägiger Abwesenheit, und Einträge neben einem anderen Eintrag desselben Tags (der Tag hat einen
+  übernommenen Dienst, oder ein früherer Eintrag zählt schon).
+- `Mitarbeiter nicht übernommen` sind Dienste von Personen außerhalb des Datensatzes. Die Dienste auf übernommenen
+  Schichten sind die Summe der `nicht gezählt` aus den Zeilen `Bedarf im Bereich ...`; ihre Einträge auf
+  Schichten, die nicht übernommen werden, kommen in keiner anderen Warnung vor.
+
+Mit `--report` steht je Grund und Schicht eine Zeile `verworfen` mit Kürzel (`schicht`), `dienste_historie`,
+`stunden_historie`, `grund` und der SP5-Id der Schicht (`sp5_schicht`). `grund` ist `nicht_zugeordnet`,
+`ignoriert`, `ausgeblendet`, `zu_lang`, `ohne_dienstzeit`, `unbekannte_schicht`, `abwesenheit`,
+`anderer_eintrag`, `mitarbeiter_nicht_uebernommen` (auf übernommenen Schichten) oder
+`mitarbeiter_und_schicht_nicht_uebernommen`. Stunden sind die Dienstzeit der Schicht je Dienst (bei Schichten ohne
+Dienstzeit und unbekannten Schichten 0). Was zu tun ist:
+
+- `nicht_zugeordnet`: in der Zuordnung unter `shifts` eintragen, wenn Dispofold die Schicht planen soll, sonst
+  unter `ignoreShifts`. `ignoriert`: Absicht, nichts zu tun.
+- `ausgeblendet`: in SP5 ausgeblendete Schicht mit Diensten in der Historie; in SP5 prüfen, ob die Schicht noch
+  gebraucht wird (dann einblenden).
+- `zu_lang`, `ohne_dienstzeit`: Zeiten der Schicht (SP5-Id) in SP5 korrigieren.
+- `unbekannte_schicht`: Einträge in SP5 verweisen auf eine Schicht-Id, die es nicht gibt; in SP5 prüfen.
+- `abwesenheit`, `anderer_eintrag`: Dienst und Abwesenheit oder zwei Einträge am selben Tag; in SP5 prüfen, wenn
+  es viele sind.
+- `mitarbeiter_nicht_uebernommen`: Personen, die arbeiten, aber nicht übernommen werden; Gruppen und
+  `excludeGroups` prüfen (siehe [Bereiche aus der Historie](#bereiche-aus-der-historie)).
+
+Dienste übernommener Schichten an Tagen mit ganztägiger Abwesenheit haben ihre eigene Warnung (`... an Tagen mit
+ganztägiger Abwesenheit nicht übernommen`) und zählen hier nicht, ebenso Sonderdienste ohne Schicht.
+
+### Wochenstunden nach CALCBASE
+
+Die Zeile `Wochenstunden nach CALCBASE: ...; HRSWEEK weicht bei 15 davon ab` nennt nur eine Zahl. Mit
+`--report` steht je gezählter Person eine Zeile `wochenstunden` mit der SP5-Id (`person`), `calcbase`,
+`hrsweek`, dem Wert nach `CALCBASE` (`wochenstunden_calcbase`) und dem Wert im Datensatz (`wochenstunden`).
+Verwendet wird immer der Wert nach `CALCBASE`, so wie SP5 das Soll rechnet. Ergibt er 0 Stunden, wird die
+Person nicht übernommen und `wochenstunden` bleibt leer; die Zeile gibt es trotzdem, damit die Zahl der Zeilen
+die Zahl der Warnung ist. Unter `CALCBASE` `0` sind Abweichungen normal; ist der Wert im Datensatz falsch, in SP5
+die Felder der Grundlage korrigieren (`HRSDAY` und `WORKDAYS`, `HRSMONTH` oder `HRSTOTAL`).
 
 ### Dienste auf ignorierten Schichten in den Planungsmonaten
 
@@ -362,7 +433,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Gruppe ohne Zuordnung: SP5-Id 7, Kürzel 'G7'` | Gruppe in `groups`, `ignoreGroups` oder `excludeGroups` aufnehmen. |
 | `17 Mitarbeiter nicht übernommen (Grund)` | Gründe: ausgeblendet, nicht beschäftigt im Monat, ausgeschlossene Gruppe, ohne Bereich. Zahl mit dem erwarteten Personalstand vergleichen. |
 | `Mitarbeiter E12 hat keine Wochenstunden (CALCBASE 1) und wird nicht übernommen` | Die Stunden der Grundlage in SP5 nachtragen (`HRSDAY` und `WORKDAYS`, `HRSWEEK`, `HRSMONTH` oder `HRSTOTAL`). |
-| `Wochenstunden nach CALCBASE: 0 (Tag) 40, 1 (Woche) 12, ...; HRSWEEK weicht bei 25 davon ab` | Immer vorhanden. Viele Abweichungen unter `0` sind normal: SP5 rechnet dort nicht mit `HRSWEEK`. |
+| `Wochenstunden nach CALCBASE: 0 (Tag) 40, 1 (Woche) 12, ...; HRSWEEK weicht bei 25 davon ab` | Immer vorhanden. Viele Abweichungen unter `0` sind normal: SP5 rechnet dort nicht mit `HRSWEEK`. Wer: Zeilen `wochenstunden` im Bericht (siehe [Wochenstunden nach CALCBASE](#wochenstunden-nach-calcbase)). |
 | `Mitarbeiter E12 hat Gesamtstunden (CALCBASE 3) ohne abgeschlossene Beschäftigung (EMPSTART bis EMPEND) und wird nicht übernommen` | In SP5 das Austrittsdatum eintragen oder eine andere Grundlage wählen. |
 | `3 Mitarbeiter nur teilweise im Monat beschäftigt; ...` | Ein- oder Austritt im Monat. |
 | `Bereich AN: 2 Mitarbeiter mit Diensten in den 12 Monaten davor ohne den Bereich aus Gruppen, 5 mit ...` | Immer vorhanden (außer ohne Historie); siehe [Bereiche aus der Historie](#bereiche-aus-der-historie). |
@@ -374,6 +445,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3-4/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
 | `Schicht 'S1' nicht zugeordnet: 120 Dienste, 960.0 Stunden ...` oder `Schicht 'X2' ignoriert: ...` | Je Schicht ohne Bereich mit Diensten in der Historie; siehe [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich). Nicht zugeordnet: in `shifts` eintragen, wenn Dispofold sie planen soll. Ignoriert ist Absicht. |
 | `Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden ...` | Immer vorhanden (außer ohne Historie): die Summe dazu. |
+| `Verworfene Dienste 2026-12-01..2026-12-31, <Grund>: ...` | Immer vorhanden (außer ohne Historie): verworfene Dienste der Historie je Grund; siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie). |
 | `Bedarf aus der Historie: Median ...` oder `Bedarf aus SP5 ...` | Immer vorhanden (außer ohne Historie): woher der Bedarf im Datensatz kommt. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
@@ -384,7 +456,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Keine Feiertage in SP5 (5HOLID); ...` | Die österreichischen Feiertage werden verwendet. |
 | `... halbe Feiertage (5HOLID INTERVAL) nicht als Feiertag übernommen` | Halbe Feiertage zählen nur für den SP5-Bedarf (`--demand sp5`) als Feiertag. |
 | `Bereich X: am YYYY-MM-DD kein Bedarf in SP5, es gilt der Wochentagsbedarf` | Nur mit `--demand sp5`: SP5 hat an dem Tag keinen Bedarf; in Dispofold prüfen. |
-| `... Dienste ... mit nicht zugeordneter Schicht ignoriert` | Vormonatsdienste in Schichten ohne Bereich. |
+| `... Dienste ... mit nicht zugeordneter Schicht ignoriert` | Einträge übernommener Mitarbeiter auf Schichten, die nicht im Datensatz sind, je für die Historie und die Vormonatsdienste; die Gründe stehen in [Verworfene Dienste der Historie](#verworfene-dienste-der-historie). |
 | `... Dienste ... an Tagen mit ganztägiger Abwesenheit nicht übernommen` | Dienst und Abwesenheit am selben Tag; in SP5 prüfen. |
 | `... Sonderdienste ... mit TYPE ungleich 0 als Dienst übernommen` | Prüfen, ob diese Sonderdienste wirklich gearbeitet wurden. |
 | `... Sonderdienste ... ohne Schicht nicht übernommen` | Sonderdienste mit eigenen Zeiten haben keine Schicht im Datensatz. |
