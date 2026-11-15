@@ -84,3 +84,41 @@ def test_export_passes(tmp_path):
     assert result["people"] and result["shifts"] and result["demand"] and result["history"]
     assert result["version"] == 2 and problems(result) == []
     assert {h["source"] for h in result["history"]} == {"import"}
+
+
+def _with_mix(mix):
+    d = _load(ACCEPT[0])
+    person = next(p for p in d["people"] if p["areaIds"])
+    person["shiftMix"] = mix(person["areaIds"])
+    return d, person["id"]
+
+
+@pytest.mark.parametrize("mix", [
+    lambda areas: {"categories": {"NIGHT": 0.1, "DAY": 0.9}, "areas": {areas[0]: 1.0}},
+    lambda areas: {"categories": {"DAY": 0.333, "LATE": 0.333, "NIGHT": 0.333}, "areas": {}},
+    lambda areas: {"categories": {}},
+    lambda areas: None,
+], ids=["full", "sum-within-tolerance", "empty", "null"])
+def test_shift_mix_is_accepted(mix):
+    d, _ = _with_mix(mix)
+    assert problems(d) == []
+
+
+@pytest.mark.parametrize("mix, in_schema", [
+    (lambda areas: {"categories": {"NIGHT": 0.5, "DAY": 0.4}}, False),
+    (lambda areas: {"categories": {"DAY": 1.0}, "areas": {areas[0]: 0.6, "ZZ": 0.4}}, False),
+    (lambda areas: {"categories": {"DAY": 1.2, "NIGHT": -0.2}}, True),
+    (lambda areas: {"categories": {"DAY": 1.0}, "areas": {areas[0]: 0.98}}, False),
+], ids=["sum-below-one", "area-not-of-the-person", "share-outside-0-1", "areas-sum-off"])
+def test_bad_shift_mix_is_rejected(mix, in_schema):
+    d, pid = _with_mix(mix)
+    errors, _ = validate(d)
+    assert ("import.badShiftMix", {"personId": pid}) in errors
+    assert bool(schema_errors(d)) == in_schema
+
+
+def test_shift_mix_schema_rejects_unknown_categories_and_keys():
+    d, _ = _with_mix(lambda areas: {"categories": {"MIDDAY": 1.0}})
+    assert schema_errors(d)
+    d, _ = _with_mix(lambda areas: {"categories": {"DAY": 1.0}, "extra": {}})
+    assert schema_errors(d)

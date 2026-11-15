@@ -117,8 +117,21 @@
         "familyRules": { "type": ["array", "null"], "items": { "$ref": "#/$defs/familyRule" } },
         "externalId": { "$ref": "#/$defs/stringOrNull" },
         "entryDate": { "$ref": "#/$defs/dateOrNull" },
-        "exitDate": { "$ref": "#/$defs/dateOrNull" }
+        "exitDate": { "$ref": "#/$defs/dateOrNull" },
+        "shiftMix": { "anyOf": [{ "$ref": "#/$defs/shiftMix" }, { "type": "null" }] }
       }
+    },
+    "shiftMix": {
+      "description": "Usual shares of the person's duties per shift category and per area; each map sums to 1.",
+      "type": "object",
+      "properties": {
+        "categories": {
+          "type": "object", "propertyNames": { "$ref": "#/$defs/category" },
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "areas": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 } }
+      },
+      "additionalProperties": false
     },
     "restriction": {
       "type": "object",

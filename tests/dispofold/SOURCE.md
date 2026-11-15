@@ -8,8 +8,12 @@ Dispofold commit: `e87bd45906f68ff9fcbfad714da141033c3f87e3`
 | `tests/dispofold/accept/`, `tests/dispofold/reject/` | `tests/fixtures/contract/accept/`, `tests/fixtures/contract/reject/` |
 | `docs/datenformat.md` | `docs/datenformat.md` |
 
-The files are unchanged. `tests/contract.py` mirrors the import validator of the same commit
-(`DatasetValidator.java`, default rules: `maxDutyHours` 12).
+The files are unchanged, except that `dataset.schema.json` also carries the optional person field `shiftMix`
+(`$defs.person.properties.shiftMix`, `$defs.shiftMix`), copied from Dispofold's working tree on top of commit
+`a22da076a7391d8dae81ce3bcb9328d166040b00` before that change was committed. `tests/contract.py` mirrors the
+import validator of the same commit (`DatasetValidator.java`, default rules: `maxDutyHours` 12) plus the rule
+`import.badShiftMix` of that working tree (`validMix`). Once Dispofold commits `shiftMix`, take the files from
+that commit as below and put its id here.
 
 To update, in a Dispofold checkout:
 

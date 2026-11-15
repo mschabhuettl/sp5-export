@@ -2,8 +2,8 @@
 
 The JSON schema (tests/dispofold/dataset.schema.json) covers the shape of the document; this module covers
 what the schema cannot express: references between entries, unique ids and entries, dates inside the planning
-month, shift lengths against maxDutyHours, the reserved shift id. It returns Dispofold's error codes, so it
-can be checked against the expected codes of the shared reject corpus.
+month, shift lengths against maxDutyHours, the reserved shift id, the sums and area keys of a shift mix. It
+returns Dispofold's error codes, so it can be checked against the expected codes of the shared reject corpus.
 """
 
 import json
@@ -17,6 +17,7 @@ FORMAT = "dispofold/dataset"
 VERSION = 2
 MAX_DUTY_HOURS = 12  # Dispofold's default rule
 COMP_REST_ID = "ER"
+SHIFT_MIX_TOLERANCE = 0.01  # allowed difference of a shift mix map's sum from 1
 DAY_CODES = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL"}
 MONTH = re.compile(r"\d{4}-\d{2}")
 DISPOFOLD = Path(__file__).resolve().parent / "dispofold"
@@ -44,6 +45,20 @@ def _month(value) -> tuple[int, int] | None:
 def _minutes(t: str) -> int:
     h, m = t.split(":")[:2]
     return int(h) * 60 + int(m)
+
+
+def _valid_shares(shares) -> bool:
+    if not shares:
+        return True
+    if any(s is None or not 0 <= s <= 1 for s in shares):
+        return False
+    return abs(sum(shares) - 1) <= SHIFT_MIX_TOLERANCE
+
+
+def _valid_mix(mix, area_ids) -> bool:
+    categories, areas = mix.get("categories") or {}, mix.get("areas") or {}
+    return _valid_shares(list(categories.values())) and _valid_shares(list(areas.values())) \
+        and set(areas) <= set(area_ids)
 
 
 class _Validator:
@@ -171,6 +186,8 @@ class _Validator:
             entry, leave = _date(p.get("entryDate")), _date(p.get("exitDate"))
             if entry and leave and leave < entry:
                 self.error("import.badEmployment", personId=p.get("id"))
+            if p.get("shiftMix") is not None and not _valid_mix(p["shiftMix"], _list(p.get("areaIds"))):
+                self.error("import.badShiftMix", personId=p.get("id"))
             for f in _list(p.get("familyRules")):
                 if f is None:
                     self.error("import.missingField", kind="familyRule", field="familyRules", personId=p.get("id"))
