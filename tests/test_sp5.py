@@ -498,6 +498,31 @@ def test_weekly_hours_follow_the_calcbase(source, folder, tmp_path):
         r"HRSWEEK weicht bei \d+ davon ab$", summary[0])
 
 
+def test_weekly_hours_report_names_who_differs_and_the_value_used(source, folder, tmp_path):
+    sp5 = _Sp5Copy(folder, tmp_path)
+    p = sorted(int(x["externalId"]) for x in source[0]["people"])
+    five = "1 1 1 1 1 0 0 0"
+    sp5.update("5EMPL", p[0], CALCBASE=0, HRSDAY=4.0, WORKDAYS=five, HRSWEEK=40.0)
+    sp5.update("5EMPL", p[1], CALCBASE=2, HRSMONTH=130.0, HRSWEEK=40.0)
+    sp5.update("5EMPL", p[2], CALCBASE=0, HRSDAY=7.5, WORKDAYS=five, HRSWEEK=37.5)  # same value: no row
+    sp5.update("5EMPL", p[3], CALCBASE=1, HRSWEEK=38.5)  # HRSWEEK is the value: no row
+    sp5.update("5EMPL", p[4], CALCBASE=0, HRSDAY=8.0, WORKDAYS="0 0 0 0 0 0 0 1", HRSWEEK=20.0)  # 0 h: not exported
+    report = tmp_path / "bericht.csv"
+    plain, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "plain.json")
+    result, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
+    assert (tmp_path / "dataset.json").read_bytes() == (tmp_path / "plain.json").read_bytes()
+    rows = {r[1]: r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
+            if r[0] == "wochenstunden"}
+    assert rows[f"E{p[0]}"] == ["wochenstunden", f"E{p[0]}", *[""] * 11, "20.0", *[""] * 6, "0", "40.0", "20.0"]
+    assert rows[f"E{p[1]}"][13:] == ["30.0", *[""] * 6, "2", "40.0", "30.0"]
+    assert rows[f"E{p[4]}"][13:] == ["", *[""] * 6, "0", "20.0", "0.0"]
+    assert f"E{p[2]}" not in rows and f"E{p[3]}" not in rows
+    hours = {p["id"]: p["weeklyHours"] for p in result["people"]}
+    assert all(r[13] == str(hours[pid]) for pid, r in rows.items() if pid != f"E{p[4]}")
+    summary = next(w for w in warnings if w.startswith("Wochenstunden nach CALCBASE"))
+    assert summary.endswith(f"; HRSWEEK weicht bei {len(rows)} davon ab")
+
+
 def test_unknown_calcbase_is_an_error(source, folder, tmp_path):
     sp5 = _Sp5Copy(folder, tmp_path)
     eid = min(int(x["externalId"]) for x in source[0]["people"])
@@ -960,6 +985,93 @@ def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path
 
     none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
     assert not [w for w in warnings if w.startswith(("Schicht 'H", "Schichten ohne Bereich"))]
+
+
+def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    hx.mapping["shifts"][0]["match"] = "H[1-4]"  # H5 not mapped
+    hx.mapping["ignoreShifts"].append("H6")
+    hx.update("5SHIFT", hx.shift["H4"], HIDE=1)  # 22:00-06:00, 8 hours
+    for sid, (code, times) in enumerate((("LZ", "06:00-19:00"), ("TZ", "")), 960):
+        hx.add("5SHIFT", ID=sid, NAME="Historie", SHORTNAME=code, POSITION=sid, HIDE=0, COLORBK=0,
+               **{f"STARTEND{k}": times for k in range(8)}, **{f"DURATION{k}": 8.0 for k in range(8)})
+        hx.mapping["shifts"].insert(0, {"match": code, "areaId": "HX"})
+    hx.add("5GRASG", EMPLOYEEID=9206, GROUPID=next(g["ID"] for g in hx.rows("5GROUP") if g["NAME"] == "Ehrenamt"))
+    leave = {r["SHORTNAME"]: r["ID"] for r in hx.rows("5LEAVT")}
+    hx.duty(9201, "H1", DECEMBER)  # taken: not dropped
+    hx.duty(9202, "H1", DECEMBER[20:21])
+    before, before_warnings, _ = hx.export("before.json")
+    hx.duty(9202, "H5", DECEMBER[:3])  # not mapped: 3 duties, 36 hours
+    hx.duty(9203, "H6", DECEMBER[:4])  # ignored: 4 duties, 32 hours
+    hx.duty(9204, "H4", DECEMBER[:2])  # hidden: 2 duties, 16 hours
+    hx.add("5MASHI", EMPLOYEEID=9205, SHIFTID=960, DATE="2026-12-01", WORKPLACID=0, TYPE=0)  # 13 hours
+    hx.add("5MASHI", EMPLOYEEID=9205, SHIFTID=960, DATE="2026-12-02", WORKPLACID=0, TYPE=0)
+    hx.add("5MASHI", EMPLOYEEID=9205, SHIFTID=961, DATE="2026-12-03", WORKPLACID=0, TYPE=0)  # no times: 0 hours
+    # Other: a shift id that is not in 5SHIFT, a day of full-day absence, a second row of a day.
+    hx.add("5MASHI", EMPLOYEEID=9202, SHIFTID=999, DATE="2026-12-06", WORKPLACID=0, TYPE=0)
+    hx.duty(9203, "H6", DECEMBER[10:11])
+    hx.add("5ABSEN", EMPLOYEEID=9203, DATE="2026-12-11", LEAVETYPID=leave["K"], TYPE=0, INTERVAL=0)
+    hx.duty(9202, "H5", DECEMBER[20:21])  # a second row: the duty of the day is the H1 one
+    hx.duty(9203, "H6", DECEMBER[:1])  # a second row on a day already counted
+    # Not exported: 3 duties on a shift taken, 1 on a shift not mapped.
+    hx.duty(9206, "H1", DECEMBER[:3])
+    hx.duty(9206, "H5", DECEMBER[3:4])
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("after.json", "--report", str(report))
+    assert result == before  # the dataset does not know these duties
+
+    head = "Verworfene Dienste 2026-12-01..2026-12-31"
+    assert [w for w in warnings if w.startswith(head)][:-1] == [
+        f"{head}, Schicht nicht zugeordnet: 3 Dienste, 36.0 Stunden",
+        f"{head}, Schicht ignoriert (ignoreShifts): 4 Dienste, 32.0 Stunden",
+        f"{head}, Schicht ausgeblendet (HIDE): 2 Dienste, 16.0 Stunden",
+        f"{head}, Schicht länger als 12 Stunden oder ohne Dienstzeit: 3 Dienste, 26.0 Stunden",
+        f"{head}, sonstige: 4 Dienste, 28.0 Stunden (1 ohne Schicht in 5SHIFT, 1 an Tagen mit ganztägiger "
+        "Abwesenheit, 2 neben einem anderen Eintrag desselben Tags)",
+        f"{head}: zusammen 16 Dienste übernommener Mitarbeiter auf Schichten, die nicht übernommen werden (wie die "
+        "Warnung '... Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert')"]
+
+    def not_exported(lines):
+        """Duties and hours of people not exported on shifts taken and on other shifts (the synthetic folder has
+        some of its own in the last week)."""
+        line = next(w for w in lines if w.startswith(f"{head}, Mitarbeiter nicht übernommen: "))
+        m = re.fullmatch(rf"{head}, Mitarbeiter nicht übernommen: (\d+) Dienste, ([\d.]+) Stunden auf übernommenen "
+                         r"Schichten \(die nicht gezählten der Bedarfszeilen\), dazu (\d+) Dienste, ([\d.]+) Stunden "
+                         "auf Schichten, die nicht übernommen werden", line)
+        return int(m[1]), float(m[2]), int(m[3]), float(m[4])
+
+    was, now = not_exported(before_warnings), not_exported(warnings)
+    assert (now[0] - was[0], now[1] - was[1], now[2] - was[2], now[3] - was[3]) == (3, 36.0, 1, 12.0)
+    # The sums are the existing warnings: the rows on shifts not taken, the shifts without area, the duties of
+    # people not exported in the demand lines.
+    assert "16 Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert" in warnings
+    assert "Schicht 'H6' ignoriert: 4 Dienste, 32.0 Stunden in den 1 Monaten davor" in warnings
+    assert "Schicht 'H5' nicht zugeordnet: 3 Dienste, 36.0 Stunden in den 1 Monaten davor" in warnings
+    left_out = [int(re.search(r"(\d+) nicht gezählt", w)[1]) for w in warnings if w.startswith("Bedarf im Bereich")]
+    assert sum(left_out) == now[0]
+
+    rows = [r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
+            if r[0] == "verworfen"]
+    assert sum(int(r[4]) for r in rows if r[18] == "mitarbeiter_nicht_uebernommen") == now[0]
+    assert sum(int(r[4]) for r in rows if not r[18].startswith("mitarbeiter_")) == 16
+    rows = [r for r in rows if r[3] in ("", "LZ", "TZ", *HX_SHIFTS)]
+    assert all(len(r) == 23 and r[1] == r[2] == "" and r[5:11] == [""] * 6 and r[12:18] == [""] * 6
+               and r[20:] == [""] * 3 for r in rows)
+    assert sorted((r[3], r[18], r[19], r[4], r[11]) for r in rows) == [
+        ("", "unbekannte_schicht", "999", "1", "0.0"),
+        ("H1", "mitarbeiter_nicht_uebernommen", str(hx.shift["H1"]), "3", "36.0"),
+        ("H4", "ausgeblendet", str(hx.shift["H4"]), "2", "16.0"),
+        ("H5", "anderer_eintrag", str(hx.shift["H5"]), "1", "12.0"),
+        ("H5", "mitarbeiter_und_schicht_nicht_uebernommen", str(hx.shift["H5"]), "1", "12.0"),
+        ("H5", "nicht_zugeordnet", str(hx.shift["H5"]), "3", "36.0"),
+        ("H6", "abwesenheit", str(hx.shift["H6"]), "1", "8.0"),
+        ("H6", "anderer_eintrag", str(hx.shift["H6"]), "1", "8.0"),
+        ("H6", "ignoriert", str(hx.shift["H6"]), "4", "32.0"),
+        ("LZ", "zu_lang", "960", "2", "26.0"),
+        ("TZ", "ohne_dienstzeit", "961", "1", "0.0")]
+
+    none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
+    assert not [w for w in warnings if w.startswith("Verworfene Dienste")]
 
 
 def _limits(dataset, area, code, minute):
