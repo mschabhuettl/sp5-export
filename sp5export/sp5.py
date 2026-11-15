@@ -825,8 +825,8 @@ class _Import:
         `without_area` (not those of absent days or of days with a duty that is taken). `rejected` receives
         (person id, SP5 shift id, what) for every row the warning about duties with a shift not mapped counts:
         what is "unbekannte_schicht" (no shift of 5SHIFT), "abwesenheit" (a day of full-day absence),
-        "gezaehlt" (the first row of the day on a shift of `without_area`, or of `dropped_shifts`, without a duty
-        taken; for `without_area` exactly the duties of `lost`) or "anderer_eintrag" (any other row)."""
+        "gezaehlt" (one row per day without a duty taken: for `without_area` exactly the duties of `lost`, else
+        the first row on a shift of `dropped_shifts`) or "anderer_eintrag" (any other row)."""
         result, unknown, loose, first, rows_out = {}, 0, {}, {}, []
         people = self.person_by_sp5 if people is None else people
         warn = (lambda text: None) if quiet else self.warn
@@ -876,7 +876,7 @@ class _Import:
         if lost is not None:
             lost.update({k: v for k, v in loose.items() if k not in result and k not in absent_days})
         if rejected is not None:
-            firsts = set(first.values())
+            firsts = {rid for (key, own), rid in first.items() if own or (key, True) not in first}
             for key, sid, rid in rows_out:
                 what = "unbekannte_schicht" if sid not in self.without_area and sid not in self.dropped_shifts \
                     else "abwesenheit" if key in absent_days \

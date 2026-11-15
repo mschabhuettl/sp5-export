@@ -1013,6 +1013,7 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
     hx.add("5ABSEN", EMPLOYEEID=9203, DATE="2026-12-11", LEAVETYPID=leave["K"], TYPE=0, INTERVAL=0)
     hx.duty(9202, "H5", DECEMBER[20:21])  # a second row: the duty of the day is the H1 one
     hx.duty(9203, "H6", DECEMBER[:1])  # a second row on a day already counted
+    hx.duty(9202, "H4", DECEMBER[:1])  # a second row on a hidden shift: the day counts for the unmapped H5
     # Not exported: 3 duties on a shift taken, 1 on a shift not mapped.
     hx.duty(9206, "H1", DECEMBER[:3])
     hx.duty(9206, "H5", DECEMBER[3:4])
@@ -1026,9 +1027,9 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
         f"{head}, Schicht ignoriert (ignoreShifts): 4 Dienste, 32.0 Stunden",
         f"{head}, Schicht ausgeblendet (HIDE): 2 Dienste, 16.0 Stunden",
         f"{head}, Schicht länger als 12 Stunden oder ohne Dienstzeit: 3 Dienste, 26.0 Stunden",
-        f"{head}, sonstige: 4 Dienste, 28.0 Stunden (1 ohne Schicht in 5SHIFT, 1 an Tagen mit ganztägiger "
-        "Abwesenheit, 2 neben einem anderen Eintrag desselben Tags)",
-        f"{head}: zusammen 16 Dienste übernommener Mitarbeiter auf Schichten, die nicht übernommen werden (wie die "
+        f"{head}, sonstige: 5 Dienste, 36.0 Stunden (1 ohne Schicht in 5SHIFT, 1 an Tagen mit ganztägiger "
+        "Abwesenheit, 3 neben einem anderen Eintrag desselben Tags)",
+        f"{head}: zusammen 17 Dienste übernommener Mitarbeiter auf Schichten, die nicht übernommen werden (wie die "
         "Warnung '... Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert')"]
 
     def not_exported(lines):
@@ -1044,7 +1045,7 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
     assert (now[0] - was[0], now[1] - was[1], now[2] - was[2], now[3] - was[3]) == (3, 36.0, 1, 12.0)
     # The sums are the existing warnings: the rows on shifts not taken, the shifts without area, the duties of
     # people not exported in the demand lines.
-    assert "16 Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert" in warnings
+    assert "17 Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert" in warnings
     assert "Schicht 'H6' ignoriert: 4 Dienste, 32.0 Stunden in den 1 Monaten davor" in warnings
     assert "Schicht 'H5' nicht zugeordnet: 3 Dienste, 36.0 Stunden in den 1 Monaten davor" in warnings
     left_out = [int(re.search(r"(\d+) nicht gezählt", w)[1]) for w in warnings if w.startswith("Bedarf im Bereich")]
@@ -1053,13 +1054,14 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
     rows = [r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "verworfen"]
     assert sum(int(r[4]) for r in rows if r[18] == "mitarbeiter_nicht_uebernommen") == now[0]
-    assert sum(int(r[4]) for r in rows if not r[18].startswith("mitarbeiter_")) == 16
+    assert sum(int(r[4]) for r in rows if not r[18].startswith("mitarbeiter_")) == 17
     rows = [r for r in rows if r[3] in ("", "LZ", "TZ", *HX_SHIFTS)]
     assert all(len(r) == 23 and r[1] == r[2] == "" and r[5:11] == [""] * 6 and r[12:18] == [""] * 6
                and r[20:] == [""] * 3 for r in rows)
     assert sorted((r[3], r[18], r[19], r[4], r[11]) for r in rows) == [
         ("", "unbekannte_schicht", "999", "1", "0.0"),
         ("H1", "mitarbeiter_nicht_uebernommen", str(hx.shift["H1"]), "3", "36.0"),
+        ("H4", "anderer_eintrag", str(hx.shift["H4"]), "1", "8.0"),
         ("H4", "ausgeblendet", str(hx.shift["H4"]), "2", "16.0"),
         ("H5", "anderer_eintrag", str(hx.shift["H5"]), "1", "12.0"),
         ("H5", "mitarbeiter_und_schicht_nicht_uebernommen", str(hx.shift["H5"]), "1", "12.0"),
