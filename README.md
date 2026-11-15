@@ -40,10 +40,11 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | Option | Bedeutung |
 |---|---|
 | `--to YYYY-MM` | letzter Planungsmonat (höchstens 12 Monate nach `--month`). Der Datensatz hat dann je Monat einen Planungsmonat mit dessen Abwesenheiten; Bedarf und Feiertage gelten für alle Monate. Übernommen wird, wer in mindestens einem der Monate beschäftigt ist. |
-| `--history-months N` | Monate Historie vor `--month`, 0 bis 24, Standard 12 |
+| `--history-months N` | Monate Historie vor `--month`, 0 bis 24, Standard 12. Mit 0 ist `--demand sp5` nötig. |
+| `--demand history\|sp5` | Bedarf aus der tatsächlichen Besetzung in der Historie (Standard) oder aus dem SP5-Bedarf (siehe unten) |
 | `--areas-from-history N` | ergänzt Bereiche, in denen jemand in der Historie mindestens N Dienste hatte (siehe unten) |
 | `--shifts-from-history N` | Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "nur auf Anfrage" (siehe unten) |
-| `--report DATEI` | CSV mit SP5-Ids (siehe unten) |
+| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich (siehe unten) |
 
 Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
 gespeicherten Plan des Monats davor; ist der noch nicht geplant, beginnt der Monat ohne Vormonatsdienste.
@@ -69,14 +70,16 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung
-bereich;E12;AN;;41;ja;
-schicht;E12;AN;AN-N;0;;auf_anfrage
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen
+bedarf;;AN;;412;;;MON;3;8;17
+bereich;E12;AN;;41;ja;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;
 ```
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
 (`bereich_aus_gruppen` ja oder nein); Zeilen `schicht` je Person und Schicht ihrer Bereiche (siehe
-[Schichten aus der Historie](#schichten-aus-der-historie)). Die Datei enthält keine Namen, nur SP5-Ids und
+[Schichten aus der Historie](#schichten-aus-der-historie)); Zeilen `bedarf` je Bereich und Tagestyp ohne Person
+(siehe [Bedarf aus der Historie](#bedarf-aus-der-historie)). Die Datei enthält keine Namen, nur SP5-Ids und
 Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
@@ -116,6 +119,49 @@ Oberfläche nicht als eigene Liste. Wird jemand trotzdem so eingeplant, zeigt di
 Empfehlung: zuerst ohne die Option mit `--report bericht.csv` laufen lassen und die Zeilen `schicht` ansehen,
 dann `--shifts-from-history 3`. In den Zeilen `schicht` steht in `einschraenkung` `auf_anfrage` (ergänzt), `sp5`
 (Einschränkung aus SP5 belassen), `zu_kurze_historie` (nicht bewertet) oder nichts.
+
+### Bedarf aus der Historie
+
+Der Bedarf in SP5 (`5SHDEM`) taugt in vielen Betrieben nicht als Planungsziel:
+
+- Derselbe Bedarf ist für mehrere Gruppen eingetragen (übergeordnete und Untergruppe oder Gruppen ohne Bezug
+  zueinander); summiert ergibt das ein Vielfaches.
+- Mehrere Schichtvarianten einer Position tragen je `MIN` 1, gemeint ist aber eine davon; summiert werden es
+  so viele Personen wie Varianten.
+- Bereiche, die jeden Tag besetzt sind, haben oft gar keinen Bedarf in SP5.
+
+So entsteht Bedarf für mehrere Personen, wo eine arbeitet, und kein Bedarf, wo mehrere arbeiten. Verlässlich
+ist dagegen die tatsächliche Besetzung in der Historie. Deshalb nimmt der Export den Bedarf standardmäßig aus
+den Diensten der Historie (`--history-months`, dieselben Dienste wie für die Historie: Istplan `5MASHI` ohne
+`TYPE` 1, Sonderdienste `5SPSHI`, Dienstzyklen; an Tagen mit ganztägiger Abwesenheit gilt kein Dienst):
+
+- Es zählen nur Dienste von Personen, die übernommen werden, in Schichten mit Bereich (nicht `ignoreShifts`,
+  nicht `excludeGroups`): Nur sie kann Dispofold einplanen.
+- Je Bereich und Tagestyp (`MON` bis `SUN`, `HOL` für die Feiertage, die auch für die Historie gelten; ein
+  Feiertag zählt nur als `HOL`) wird der Tag an jeder Beginn- und Endzeit der im Bereich gearbeiteten Schichten
+  geteilt. Für jeden Abschnitt zählt der Export an jedem Tag dieses Typs im Zeitraum, wie viele gleichzeitig im
+  Dienst waren. Jeder Tag zählt, auch einer ohne Dienst im Bereich (mit 0).
+- Ein Dienst zählt für den Tag, an dem er beginnt; ein Nachtdienst reicht in den Folgetag. So kennt Dispofold
+  Bedarfsfenster: Ein Fenster gehört zum Tag, an dem es beginnt, und `to <= from` heißt, es endet am Folgetag.
+- `min` des Abschnitts ist der Median dieser Zahlen, ein halber Wert wird aufgerundet (1, 1, 2, 2 ergibt 2);
+  `max` bleibt leer. Benachbarte Abschnitte mit gleichem Wert werden ein Fenster (höchstens 24 Stunden),
+  Abschnitte mit 0 fallen weg. Wochentage mit gleichen Fenstern werden eine Regel, dazu Regeln `HOL`; Regeln mit
+  Datum gibt es nicht.
+- Nach Mitternacht beginnt kein Dienst mehr, die Besetzung kann dort nur sinken. Diesen Teil schreibt der
+  Export als Fenster, die alle zur letzten Grenze vor Mitternacht beginnen und sich addieren (Dispofold zählt
+  überlappende Fenster zusammen). Beispiel: Tagdienst 07:00 bis 19:00 und zwei Nachtdienste 19:00 bis 07:00 und
+  22:00 bis 06:00 ergeben `07:00`-`07:00` mit 1 und `22:00`-`06:00` mit 1.
+
+`--demand sp5` nimmt wie bisher den Bedarf aus SP5 (`5SHDEM` summiert, `5SPDEM` als Regeln mit Datum), etwa
+zum Vergleich. Ohne Historie (`--history-months 0`) ist `--demand sp5` nötig, sonst endet der Export mit
+einem Fehler.
+
+Bei jedem Lauf mit Historie (gleich mit welchem `--demand`) meldet der Export je Bereich nur Zahlen: je
+Tagestyp die Spitze des Bedarfs aus der Historie (höchster Wert eines Abschnitts) gegen die Spitze des
+SP5-Bedarfs, wie viele Dienste gezählt wurden und wie viele nicht, weil die Person nicht übernommen wird
+(ausgeschlossene Gruppe, ausgeblendet, ausgetreten usw.). Mit `--report` stehen dieselben Zahlen je Bereich und
+Tagestyp in den Zeilen `bedarf`: `dienste_historie` gezählte Dienste, `spitze_historie`, `spitze_sp5` und
+`dienste_nicht_uebernommen`.
 
 Die Ausgabedatei darf nicht im SP5-Ordner liegen. Warnungen und eine Zusammenfassung erscheinen auf der
 Konsole (stderr). Bei einem Fehler endet das Programm mit Exit-Code 1 und schreibt keine Datei.
@@ -180,8 +226,9 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
   "Senkt das Soll" (`reducesTarget`), wenn SP5 die Art anrechnet (`CHARGETYP` nicht 0); "belastet das
   Stundenkonto" (`chargesAccount`), wenn sie zusätzlich von den Ist- oder Überstunden abgezogen wird
   (`DEDUCTACT` oder `DEDUCTOVT`, z. B. Zeitausgleich). Bitte für den echten Bestand in Dispofold prüfen.
-- **Bedarf** (`5SHDEM`, `5SPDEM`): je Bereich in Zeitfenster umgerechnet, Feiertage als `HOL`, Sonderbedarf
-  und abweichende Tage als Regeln mit Datum.
+- **Bedarf:** standardmäßig aus der tatsächlichen Besetzung in der Historie (siehe
+  [Bedarf aus der Historie](#bedarf-aus-der-historie)). Mit `--demand sp5` aus `5SHDEM` und `5SPDEM`: je Bereich
+  in Zeitfenster umgerechnet, Feiertage als `HOL`, Sonderbedarf und abweichende Tage als Regeln mit Datum.
 - **Feiertage** aus `5HOLID` (nur ganztägige); fehlen sie, die österreichischen gesetzlichen Feiertage.
 - **Vormonatsdienste** der letzten 7 Tage und **Historie** der Monate vor dem ersten Planungsmonat (Standard 12, `--history-months`) aus `5SPSHI`, `5MASHI`
   (Istplan) und den Dienstzyklen. Ein Sonderdienst (`5SPSHI`) mit Schicht ersetzt den Dienst des Tages, gleich
@@ -215,14 +262,16 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schichten im Bereich AN: 4 Mitarbeiter mit keinem Dienst in mindestens einer Schicht des Bereichs ...` | Immer vorhanden (außer ohne Historie); siehe [Schichten aus der Historie](#schichten-aus-der-historie). |
 | `Schichten aus Diensten: 3 Mitarbeiter mit zu kurzer Historie ... nicht bewertet, 20 Paare ... mit Einschränkung aus SP5 belassen` | Immer vorhanden (außer ohne Historie). |
 | `Schichten aus Diensten (mindestens 3): 12 Einschränkungen 'nur auf Anfrage' ergänzt` | Nur mit `--shifts-from-history`. |
+| `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
+| `Bedarf aus der Historie: Median ...` oder `Bedarf aus SP5 ...` | Immer vorhanden (außer ohne Historie): woher der Bedarf im Datensatz kommt. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
 | `... Einschränkungen nur für Feiertage nicht übernommen` | Das Datenformat kennt keine Feiertagseinschränkung. |
 | `... Einschränkungen ohne gültigen Grad (RESTRICT) als 'nie' übernommen` | Grad in SP5 prüfen. |
 | `... weitere Abwesenheiten am selben Tag ignoriert` | Je Person und Tag zählt die erste Abwesenheit. |
 | `Keine Feiertage in SP5 (5HOLID); ...` | Die österreichischen Feiertage werden verwendet. |
-| `... halbe Feiertage (5HOLID INTERVAL) nicht als Feiertag übernommen` | Halbe Feiertage zählen nur für den Bedarf als Feiertag. |
-| `Bereich X: am YYYY-MM-DD kein Bedarf in SP5, es gilt der Wochentagsbedarf` | SP5 hat an dem Tag keinen Bedarf; in Dispofold prüfen. |
+| `... halbe Feiertage (5HOLID INTERVAL) nicht als Feiertag übernommen` | Halbe Feiertage zählen nur für den SP5-Bedarf (`--demand sp5`) als Feiertag. |
+| `Bereich X: am YYYY-MM-DD kein Bedarf in SP5, es gilt der Wochentagsbedarf` | Nur mit `--demand sp5`: SP5 hat an dem Tag keinen Bedarf; in Dispofold prüfen. |
 | `... Dienste ... mit nicht zugeordneter Schicht ignoriert` | Vormonatsdienste in Schichten ohne Bereich. |
 | `... Dienste ... an Tagen mit ganztägiger Abwesenheit nicht übernommen` | Dienst und Abwesenheit am selben Tag; in SP5 prüfen. |
 | `... Sonderdienste ... mit TYPE ungleich 0 als Dienst übernommen` | Prüfen, ob diese Sonderdienste wirklich gearbeitet wurden. |
