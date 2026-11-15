@@ -62,10 +62,11 @@ Allgemeine Regeln:
       "weeklyHours": 40.0, "areaIds": ["AN", "TV"], "hoursAccount": 6.5, "compRestBalance": 2,
       "familyRules": [ { "weekdays": [2, 4], "latestEnd": "18:00", "earliestStart": null,
                          "noNights": true, "note": "Kinderbetreuung" } ],
-      "externalId": "17", "entryDate": null, "exitDate": null },
+      "externalId": "17", "entryDate": null, "exitDate": null,
+      "shiftMix": { "categories": { "DAY": 0.8, "EARLY": 0.2 }, "areas": { "AN": 0.6, "TV": 0.4 } } },
     { "id": "P0002", "firstName": "Bernd", "lastName": "Muster", "shortName": "BMU",
       "weeklyHours": 40.0, "areaIds": ["AN"], "hoursAccount": 0.0, "compRestBalance": 0,
-      "familyRules": [], "externalId": "18", "entryDate": "2026-12-14", "exitDate": null }
+      "familyRules": [], "externalId": "18", "entryDate": "2026-12-14", "exitDate": null, "shiftMix": null }
   ],
   "restrictions": [
     { "personId": "P0001", "shiftId": "AN-F", "category": null, "weekday": 0, "kind": "NEVER",
