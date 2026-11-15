@@ -730,7 +730,8 @@ class _Import:
             shift = self.shift_by_sp5.get(r.get("SHIFTID"))
             if shift is None:
                 unknown += 1
-                if r.get("SHIFTID") in self.without_area:
+                # Not when an earlier row (a deviation) already took the day: that duty was replaced.
+                if r.get("SHIFTID") in self.without_area and (person["id"], d) not in result:
                     loose.setdefault((person["id"], d), r.get("SHIFTID"))
                 if id(r) in replaced:  # the deviation still replaces the planned duty of the day
                     result.setdefault((person["id"], d), None)

@@ -1006,6 +1006,19 @@ def test_demand_from_sp5_has_no_history_max(folder, tmp_path):
     assert all(r["max"] is None for r in result["demand"] if r["areaId"] == "HX")
 
 
+def test_replaced_duty_on_a_shift_without_area_is_not_reported(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    hx.mapping["shifts"][0]["match"] = "H[1-4]"
+    hx.mapping["ignoreShifts"].append("H6")
+    hx.update("5SHIFT", hx.shift["H5"], HIDE=1)
+    hx.duty(9201, "H1", DECEMBER)
+    hx.duty(9202, "H6", DECEMBER[:2])  # planned, ignored
+    hx.add("5SPSHI", EMPLOYEEID=9202, SHIFTID=hx.shift["H5"], DATE=DECEMBER[0].isoformat(), TYPE=0)  # replaces day 1
+    _, warnings, _ = hx.export("dataset.json")
+    assert "Schicht 'H6' ignoriert: 1 Dienste, 8.0 Stunden in den 1 Monaten davor" in warnings
+    assert "Schichten ohne Bereich: 1 Schichten, 1 Dienste, 8.0 Stunden in den 1 Monaten davor" in warnings
+
+
 def test_alternative_shifts_of_one_post_give_one(folder, tmp_path):
     hx = _HistoryArea(folder, tmp_path)
     # One post, three shift variants: one person a day on one of them. SP5 carries MIN 1 for every variant.
