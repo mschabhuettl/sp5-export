@@ -12,6 +12,7 @@ from datetime import date
 import pytest
 from exportcli import MAPPING, ROOT, export, run
 
+from sp5export.dbf import read_table
 from sp5export.feasibility import check_feasibility, rules_for_day
 from sp5export.sp5 import Sp5Error, import_sp5, load_mapping
 from sp5export.timeutil import interval, month_days
@@ -648,6 +649,8 @@ def test_several_planning_months(source, folder, tmp_path):
     (("--history-months", "25"), "erlaubt sind 0 bis 24"),
     (("--areas-from-history", "0"), "Mindestzahl ab 1"),
     (("--history-months", "0", "--areas-from-history", "2"), "eine Historie"),
+    (("--shifts-from-history", "0"), "Mindestzahl ab 1"),
+    (("--history-months", "0", "--shifts-from-history", "2"), "eine Historie"),
 ])
 def test_bad_range_options(folder, tmp_path, options, message):
     proc = run(folder, MONTH, MAPPING, tmp_path / "dataset.json", *options)
@@ -707,12 +710,17 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     report = tmp_path / "bericht.csv"
     _, _, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
     lines = report.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "person;bereich;dienste_historie;bereich_aus_gruppen"
+    assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung"
     rows = [line.split(";") for line in lines[1:]]
-    assert rows and all(re.match(r"E\d+$", r[0]) and r[2].isdigit() and r[3] in ("ja", "nein") for r in rows)
+    assert {r[0] for r in rows} == {"bereich", "schicht"}
+    assert all(re.match(r"E\d+$", r[1]) and r[4].isdigit() for r in rows)
+    assert all(r[3] == "" and r[5] in ("ja", "nein") and r[6] == "" for r in rows if r[0] == "bereich")
+    codes = {s["code"] for s in imported[0]["shifts"]}
+    assert all(r[3] in codes and r[5] == "" and r[6] in ("", "sp5", "zu_kurze_historie")
+               for r in rows if r[0] == "schicht")
     text = report.read_text(encoding="utf-8")
     assert not any(name in text for name in _names(source[0]))
-    held = {(r[0], r[1]) for r in rows if r[3] == "ja"}
+    held = {(r[1], r[2]) for r in rows if r[0] == "bereich" and r[5] == "ja"}
     assert held == {(p["id"], a) for p in imported[0]["people"] for a in p["areaIds"]}
     inside = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--report", str(folder / "bericht.csv"))
     assert inside.returncode == 1 and "nicht im SP5-Ordner" in inside.stderr
@@ -728,3 +736,54 @@ def test_holiday_before_the_first_month_counts_without_history(folder, imported,
     none, _, _ = export(folder, MONTH, MAPPING, tmp_path / "none.json", "--history-months", "0")
     assert "2026-12-25" in {h["date"] for h in none["holidays"]}
     assert none["demand"] == imported[0]["demand"]
+
+
+def test_shifts_from_history(source, folder, imported, tmp_path):
+    result = imported[0]
+    sp5 = _Sp5Copy(folder, tmp_path)
+    person = next(p for p in result["people"] if p["areaIds"] == ["AN"])
+    group = next(r["GROUPID"] for r in read_table(folder / "5GRASG.DBF")
+                 if r["EMPLOYEEID"] == int(person["externalId"]))
+    shifts = {s["category"]: s for s in result["shifts"] if s["areaId"] == "AN"}
+    day, night = shifts["DAY"], shifts["NIGHT"]
+    days = ("2026-11-02", "2026-11-03", "2026-11-04", "2026-12-07", "2026-12-08", "2026-12-09")
+    # Only day duties: 9101 long employed, 9102 also with an SP5 restriction on the night shift, 9103 a new entrant.
+    for eid, start in ((9101, "2015-01-01"), (9102, "2015-01-01"), (9103, "2026-10-15")):
+        sp5.add("5EMPL", ID=eid, NAME="Nur", FIRSTNAME="Tag", SHORTNAME=f"T{eid}", NUMBER=str(eid), POSITION=eid,
+                HIDE=0, WORKDAYS="1 1 1 1 1 0 0 0", CALCBASE=1, HRSDAY=8.0, HRSWEEK=40.0, HRSMONTH=0.0,
+                HRSTOTAL=0.0, EMPSTART=start)
+        sp5.add("5GRASG", EMPLOYEEID=eid, GROUPID=group)
+        for d in days:
+            sp5.add("5MASHI", EMPLOYEEID=eid, SHIFTID=int(day["id"][1:]), DATE=d, WORKPLACID=0, TYPE=0)
+    sp5.add("5RESTR", EMPLOYEEID=9102, WEEKDAY=3, SHIFTID=int(night["id"][1:]), RESTRICT=2)
+
+    def restrictions(dataset, pid):
+        return [(r["shiftId"], r["weekday"], r["kind"]) for r in dataset["restrictions"] if r["personId"] == pid]
+
+    plain, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "plain.json")
+    assert restrictions(plain, "E9101") == [] and restrictions(plain, "E9103") == []
+    lines = [w for w in warnings if w.startswith("Schichten im Bereich AN: ")]
+    assert len(lines) == 1 and "mit keinem Dienst in mindestens einer Schicht" in lines[0]
+
+    report = tmp_path / "bericht.csv"
+    three, warnings, _ = export(sp5.dir, MONTH, MAPPING, tmp_path / "three.json", "--shifts-from-history", "3",
+                                "--report", str(report))
+    assert (night["id"], 0, "ON_REQUEST") in restrictions(three, "E9101")
+    assert {s for s, *_ in restrictions(three, "E9101")} == {s["id"] for s in shifts.values()} - {day["id"]}
+    assert [r for r in restrictions(three, "E9102") if r[0] == night["id"]] == [(night["id"], 4, "NEVER")]
+    assert restrictions(three, "E9103") == []
+    added = [r for r in three["restrictions"] if r not in plain["restrictions"]]
+    assert added and all((r["weekday"], r["kind"]) == (0, "ON_REQUEST") for r in added)
+    assert [r for r in plain["restrictions"] if r not in three["restrictions"]] == []
+    assert f"Schichten aus Diensten (mindestens 3): {len(added)} Einschränkungen 'nur auf Anfrage' ergänzt" \
+        in warnings
+    assert any(w.startswith("Schichten aus Diensten: ") and "Eintritt nach 2026-10-01" in w for w in warnings)
+
+    rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
+            if r[0] == "schicht"}
+    assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage"]
+    assert rows[("E9101", day["code"])][4:] == ["6", "", ""]
+    assert rows[("E9102", night["code"])][6] == "sp5"
+    assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
+    text = report.read_text(encoding="utf-8")
+    assert not any(name in text for name in ("Nur", "Tag", *_names(source[0])))

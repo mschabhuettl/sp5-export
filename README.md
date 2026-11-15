@@ -42,6 +42,7 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | `--to YYYY-MM` | letzter Planungsmonat (höchstens 12 Monate nach `--month`). Der Datensatz hat dann je Monat einen Planungsmonat mit dessen Abwesenheiten; Bedarf und Feiertage gelten für alle Monate. Übernommen wird, wer in mindestens einem der Monate beschäftigt ist. |
 | `--history-months N` | Monate Historie vor `--month`, 0 bis 24, Standard 12 |
 | `--areas-from-history N` | ergänzt Bereiche, in denen jemand in der Historie mindestens N Dienste hatte (siehe unten) |
+| `--shifts-from-history N` | Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "nur auf Anfrage" (siehe unten) |
 | `--report DATEI` | CSV mit SP5-Ids (siehe unten) |
 
 Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
@@ -64,16 +65,57 @@ Gruppen und meldet auf stderr nur Zahlen, nie Namen:
 
 `--areas-from-history N` gibt jeder Person zusätzlich die Bereiche, in denen sie in der Historie mindestens
 N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wenn sie N erreichen.
-`--report bericht-2027-01.csv` schreibt dazu je Person und Bereich eine Zeile `E<SP5-Id>;Bereich;Dienste;ja|nein`
-(ja = Bereich aus Gruppen), damit sich die Personen in SP5 nachschlagen lassen. Die Datei enthält keine
-Namen, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
+`--report bericht-2027-01.csv` schreibt dazu eine CSV (Trennzeichen `;`), damit sich die Personen in SP5
+nachschlagen lassen:
+
+```
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung
+bereich;E12;AN;;41;ja;
+schicht;E12;AN;AN-N;0;;auf_anfrage
+```
+
+Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
+(`bereich_aus_gruppen` ja oder nein); Zeilen `schicht` je Person und Schicht ihrer Bereiche (siehe
+[Schichten aus der Historie](#schichten-aus-der-historie)). Die Datei enthält keine Namen, nur SP5-Ids und
+Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
 Zuordnung vergleichen und die Zuordnung oder die Gruppen in SP5 korrigieren.
 
 Ausbildungsdienste zählen nicht, wenn ihre Schichten wie vorgesehen in `ignoreShifts` stehen: Sie haben dann
-keinen Bereich. Bewusst nicht aus der Historie abgeleitet werden Wünsche,
-Einschränkungen und bevorzugte Schichtarten: Gewohnheiten der Vergangenheit sind keine Regeln.
+keinen Bereich. Bewusst nicht aus der Historie abgeleitet werden Wünsche und Einschränkungen nach Art "nie":
+Gewohnheiten der Vergangenheit sind keine Regeln.
+
+### Schichten aus der Historie
+
+Manche arbeiten nur bestimmte Schichten ihrer Bereiche (etwa nur Tagdienste), ohne dass SP5 eine
+Einschränkung dafür hat. Mit Bereichen allein plant Dispofold sie in jeder Schicht des Bereichs ein. Der Export
+zählt deshalb je Person und Schicht ihrer Bereiche (nach `--areas-from-history`) die Dienste der Historie und
+meldet bei jedem Lauf (außer ohne Historie) nur Zahlen:
+
+- je Bereich: wie viele Personen in mindestens einer Schicht des Bereichs weniger als N Dienste (ohne Option:
+  keinen Dienst) hatten, und wie viele solche Paare aus Person und Schicht es gibt;
+- wie viele Personen wegen zu kurzer Historie nicht bewertet werden und wie viele Paare schon eine
+  Einschränkung aus SP5 haben.
+
+`--shifts-from-history N` macht jede solche Schicht für die Person zur Einschränkung "nur auf Anfrage"
+(`ON_REQUEST`, `weekday` 0 = alle Tage), nie zu "nie": Lücken in der Historie können Zufall sein. Dabei gilt:
+
+- Hat `5RESTR` für Person und Schicht schon eine Zeile (gleich welcher Wochentag oder Grad), bleiben die
+  Zeilen aus SP5 und es kommt nichts dazu.
+- Nicht bewertet wird, wer in der Historie weniger als N Dienste in seinen Bereichen hatte oder weniger als
+  3 Monate vor `--month` eingetreten ist.
+- Wie `--areas-from-history` braucht die Option eine Historie (`--history-months` größer 0).
+
+In Dispofold ist "nur auf Anfrage" die weiche Regel `onRequest` mit dem Standardgewicht 1000 je Dienst in
+einer solchen Schicht (einstellbar unter Regeln und Gewichte). Nicht gedeckter Bedarf ist eine Stufe
+darüber: Ist sonst niemand da, plant Dispofold die Person trotzdem ein. Die Einschränkungen erscheinen in der
+Oberfläche nicht als eigene Liste. Wird jemand trotzdem so eingeplant, zeigt die Personenansicht beim Dienst
+"Dienst ... nur auf Anfrage." Für Betrachter ist das ausgeblendet.
+
+Empfehlung: zuerst ohne die Option mit `--report bericht.csv` laufen lassen und die Zeilen `schicht` ansehen,
+dann `--shifts-from-history 3`. In den Zeilen `schicht` steht in `einschraenkung` `auf_anfrage` (ergänzt), `sp5`
+(Einschränkung aus SP5 belassen), `zu_kurze_historie` (nicht bewertet) oder nichts.
 
 Die Ausgabedatei darf nicht im SP5-Ordner liegen. Warnungen und eine Zusammenfassung erscheinen auf der
 Konsole (stderr). Bei einem Fehler endet das Programm mit Exit-Code 1 und schreibt keine Datei.
@@ -132,7 +174,8 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
   häufigste Zeit. Schichten über 12 Stunden (die Standardregel `maxDutyHours` von Dispofold) werden nicht
   übernommen, weil Dispofold sonst den ganzen Import ablehnt. Ist `maxDutyHours` in Dispofold kleiner
   eingestellt, lehnt Dispofold längere Schichten trotzdem ab (Fehlercode `import.shiftTooLong`).
-- **Einschränkungen** (`5RESTR`): `RESTRICT` 2 = nie, 1 = nur auf Anfrage, 0 = keine.
+- **Einschränkungen** (`5RESTR`): `RESTRICT` 2 = nie, 1 = nur auf Anfrage, 0 = keine. Mit `--shifts-from-history`
+  kommen "nur auf Anfrage" aus der Historie dazu.
 - **Abwesenheiten** (`5LEAVT`, `5ABSEN`): je Person und Tag die erste, nur an Tagen der Beschäftigung.
   "Senkt das Soll" (`reducesTarget`), wenn SP5 die Art anrechnet (`CHARGETYP` nicht 0); "belastet das
   Stundenkonto" (`chargesAccount`), wenn sie zusätzlich von den Ist- oder Überstunden abgezogen wird
@@ -169,6 +212,9 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `3 Mitarbeiter nur teilweise im Monat beschäftigt; ...` | Ein- oder Austritt im Monat. |
 | `Bereich AN: 2 Mitarbeiter mit Diensten in den 12 Monaten davor ohne den Bereich aus Gruppen, 5 mit ...` | Immer vorhanden (außer ohne Historie); siehe [Bereiche aus der Historie](#bereiche-aus-der-historie). |
 | `Bereiche aus Diensten (mindestens 3): ...` | Nur mit `--areas-from-history`: wie viele Bereiche ergänzt und wie viele Personen dadurch übernommen wurden. |
+| `Schichten im Bereich AN: 4 Mitarbeiter mit keinem Dienst in mindestens einer Schicht des Bereichs ...` | Immer vorhanden (außer ohne Historie); siehe [Schichten aus der Historie](#schichten-aus-der-historie). |
+| `Schichten aus Diensten: 3 Mitarbeiter mit zu kurzer Historie ... nicht bewertet, 20 Paare ... mit Einschränkung aus SP5 belassen` | Immer vorhanden (außer ohne Historie). |
+| `Schichten aus Diensten (mindestens 3): 12 Einschränkungen 'nur auf Anfrage' ergänzt` | Nur mit `--shifts-from-history`. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
 | `... Einschränkungen nur für Feiertage nicht übernommen` | Das Datenformat kennt keine Feiertagseinschränkung. |

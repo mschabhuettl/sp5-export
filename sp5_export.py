@@ -31,7 +31,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--history-months", type=int, default=12, help="Monate Historie vor --month (0 bis 24)")
     parser.add_argument("--areas-from-history", type=int, metavar="N",
                         help="Bereiche ergänzen, in denen jemand in der Historie mindestens N Dienste hatte")
-    parser.add_argument("--report", help="CSV mit SP5-Ids: gearbeitete und per Gruppe zugeordnete Bereiche")
+    parser.add_argument("--shifts-from-history", type=int, metavar="N",
+                        help="Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "
+                             "'nur auf Anfrage'")
+    parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter")
     parser.add_argument("--mapping", required=True, help="Zuordnungsdatei (JSON)")
     parser.add_argument("--out", required=True, help="Ausgabedatei (JSON)")
     args = parser.parse_args(argv)
@@ -59,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         rows: list = []
         dataset, warnings = import_sp5(data, args.month, mapping, args.to, args.history_months,
-                                       args.areas_from_history, rows)
+                                       args.areas_from_history, rows, args.shifts_from_history)
     except Sp5Error as e:
         return _fail(str(e))
     except Exception as e:
@@ -74,8 +77,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def write_report(f):
         w = csv.writer(f, delimiter=";")
-        w.writerow(["person", "bereich", "dienste_historie", "bereich_aus_gruppen"])
-        w.writerows([pid, area, n, "ja" if held else "nein"] for pid, area, n, held in rows)
+        w.writerow(["pruefung", "person", "bereich", "schicht", "dienste_historie", "bereich_aus_gruppen",
+                    "einschraenkung"])
+        w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed
     # export leaves no new or half-written file.

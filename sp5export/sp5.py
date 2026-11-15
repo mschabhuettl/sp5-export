@@ -193,15 +193,17 @@ def _norm_time(t: str) -> str:
 
 class _Import:
     def __init__(self, folder: Path, months: list[str], mapping: dict, history_months: int = HISTORY_MONTHS,
-                 areas_from_history: int | None = None):
+                 areas_from_history: int | None = None, shifts_from_history: int | None = None):
         self.folder, self.mapping = folder, mapping
         self.month, self.months = months[0], months
         self.history_months, self.areas_from_history = history_months, areas_from_history
+        self.shifts_from_history = shifts_from_history
         self.warnings: list[str] = []
         self.days = [d for m in months for d in month_days(m)]
         self.first, self.last = self.days[0], self.days[-1]
         self.history_start = date.fromisoformat(add_months(self.month, -history_months) + "-01")
-        self.report_rows: list[tuple[str, str, int, bool]] = []
+        self.report_rows: list[tuple] = []  # (check, person, area, shift code, duties, area from groups, restriction)
+        self.shift_counts: Counter = Counter()  # (person id, shift id) -> duties in the history window
         self._group_regular: dict = {}
         self._tables: dict[str, list[dict]] = {}
         self.employment: dict[str, tuple[date | None, date | None]] = {}
@@ -688,12 +690,14 @@ class _Import:
         if self.history_months:
             for pid, _, s in self.duties(self.history_start, self.first - timedelta(days=1), people, quiet=True):
                 counts[(pid, s["areaId"])] += 1
+                self.shift_counts[(pid, s["id"])] += 1
         areas = [a["id"] for a in self.mapping["areas"]]
         group = {p["id"]: set(p["areaIds"]) for p in people.values()}
         for p in people.values():
             for a in areas:
                 if counts[(p["id"], a)] or a in group[p["id"]]:
-                    self.report_rows.append((p["id"], a, counts[(p["id"], a)], a in group[p["id"]]))
+                    self.report_rows.append(("bereich", p["id"], a, "", counts[(p["id"], a)],
+                                             "ja" if a in group[p["id"]] else "nein", ""))
         months = self.history_months
         if months:
             exported = [p["id"] for p in self.person_by_sp5.values()]
@@ -724,6 +728,55 @@ class _Import:
             self.warn(f"Bereiche aus Diensten (mindestens {n}): {added} Bereiche ergänzt, davon für {extra} "
                       "Mitarbeiter ohne Bereich aus Gruppen, die damit übernommen werden")
 
+    # ── shifts from history ──────────────────────────────────
+
+    def shifts_from_duties(self) -> list[dict]:
+        """Compare the shifts of each person's areas with the duties in the history window (counts only) and, with
+        `shifts_from_history` N, return an ON_REQUEST restriction for every shift with fewer than N duties. A pair
+        with any 5RESTR row keeps the SP5 rows only; people with too little history are left out."""
+        months, n = self.history_months, self.shifts_from_history
+        if not months:
+            return []
+        least = n or 1
+        sp5 = {(r.get("EMPLOYEEID"), r.get("SHIFTID")) for r in self.table("5RESTR")}
+        recent = date.fromisoformat(add_months(self.month, -3) + "-01")
+        by_area = defaultdict(list)
+        for sp5_id, s in self.shift_by_sp5.items():
+            by_area[s["areaId"]].append((sp5_id, s))
+        people, pairs, kept, skipped, result = Counter(), Counter(), 0, 0, []
+        for eid, p in self.person_by_sp5.items():
+            shifts = [x for a in p["areaIds"] for x in by_area[a]]
+            count = {s["id"]: self.shift_counts[(p["id"], s["id"])] for _, s in shifts}
+            entry = self.employment[p["id"]][0]
+            short = sum(count.values()) < least or (entry is not None and entry > recent)
+            skipped += short
+            few = set()
+            for sp5_id, s in shifts:
+                mark = ""
+                if (eid, sp5_id) in sp5:
+                    mark, kept = "sp5", kept + 1
+                elif short:
+                    mark = "zu_kurze_historie"
+                elif count[s["id"]] < least:
+                    pairs[s["areaId"]] += 1
+                    few.add(s["areaId"])
+                    if n:
+                        mark = "auf_anfrage"
+                        result.append({"personId": p["id"], "shiftId": s["id"], "weekday": 0, "kind": "ON_REQUEST"})
+                self.report_rows.append(("schicht", p["id"], s["areaId"], s["code"], count[s["id"]], "", mark))
+            people.update(few)
+        fewer = f"weniger als {n} Diensten" if n else "keinem Dienst"
+        for a in (a["id"] for a in self.mapping["areas"]):
+            self.warn(f"Schichten im Bereich {a}: {people[a]} Mitarbeiter mit {fewer} in mindestens einer Schicht "
+                      f"des Bereichs in den {months} Monaten davor, {pairs[a]} Paare aus Mitarbeiter und Schicht")
+        self.warn(f"Schichten aus Diensten: {skipped} Mitarbeiter mit zu kurzer Historie (weniger als {least} "
+                  f"Dienste in ihren Bereichen oder Eintritt nach {recent}) nicht bewertet, {kept} Paare aus "
+                  "Mitarbeiter und Schicht mit Einschränkung aus SP5 belassen")
+        if n:
+            self.warn(f"Schichten aus Diensten (mindestens {n}): {len(result)} Einschränkungen 'nur auf Anfrage' "
+                      "ergänzt")
+        return result
+
     def run(self) -> dict:
         self.shifts()
         if not self.shift_by_sp5:
@@ -734,7 +787,8 @@ class _Import:
         self._people_summary()
         if not self.person_by_sp5:
             raise Sp5Error("kein Mitarbeiter übernommen; Zuordnung 'groups' und 'excludeGroups' prüfen")
-        restrictions = self.restrictions()
+        restrictions = self.restrictions() + self.shifts_from_duties()
+        restrictions.sort(key=lambda r: (r["personId"], r["shiftId"], r["weekday"]))  # as restrictions() sorts
         absences = self.absences()
         holidays, sp5_holiday_dates = self.holidays()
         holiday_dates = {h["date"] for h in holidays}
@@ -762,10 +816,11 @@ class _Import:
 
 def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = None,
                history_months: int = HISTORY_MONTHS, areas_from_history: int | None = None,
-               report: list | None = None) -> tuple[dict, list[str]]:
+               report: list | None = None, shifts_from_history: int | None = None) -> tuple[dict, list[str]]:
     """Read the SP5 folder (never written) and return the dataset of the months `month`..`to` and the warnings.
-    `report` (a list) receives one row (person id, area, duties in the history window, area from groups) per
-    person and area worked or held."""
+    `report` (a list) receives the rows (check, person id, area, shift code, duties in the history window, area
+    from groups, restriction): check "bereich" per person and area worked or held, check "schicht" per person and
+    shift of their areas."""
     validate_mapping(mapping)
     months = [month]
     while to and months[-1] < to:
@@ -775,13 +830,14 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
                        "Monate danach liegen")
     if not 0 <= history_months <= MAX_HISTORY_MONTHS:
         raise Sp5Error(f"Historie {history_months} Monate: erlaubt sind 0 bis {MAX_HISTORY_MONTHS}")
-    if areas_from_history is not None and (areas_from_history < 1 or not history_months):
-        raise Sp5Error("Bereiche aus Diensten brauchen eine Mindestzahl ab 1 und eine Historie")
+    for option in (areas_from_history, shifts_from_history):
+        if option is not None and (option < 1 or not history_months):
+            raise Sp5Error("Bereiche und Schichten aus Diensten brauchen eine Mindestzahl ab 1 und eine Historie")
     folder = Path(folder)
     if not folder.is_dir():
         raise Sp5Error(f"SP5-Ordner nicht gefunden: {folder}")
-    job = _Import(folder, months, mapping, history_months, areas_from_history)
+    job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history)
     dataset = job.run()
     if report is not None:
-        report.extend(sorted(job.report_rows, key=lambda r: (int(r[0][1:]), r[1])))
+        report.extend(sorted(job.report_rows, key=lambda r: (r[0], int(r[1][1:]), r[2], r[3])))
     return dataset, job.warnings
