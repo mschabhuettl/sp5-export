@@ -16,7 +16,7 @@ from exportcli import MAPPING, ROOT, export, run
 from sp5export.dbf import read_table
 from sp5export.demand import median_up, percentile_up, start_day_windows
 from sp5export.feasibility import capacity_hours, check_feasibility, rules_for_day
-from sp5export.sp5 import Sp5Error, import_sp5, load_mapping
+from sp5export.sp5 import Sp5Error, _shares, import_sp5, load_mapping
 from sp5export.timeutil import DAY, interval, month_days
 from tools.generator import generate_with_mixes
 from tools.sp5writer import OTHER_SHIFTS, write_sp5_folder
@@ -718,11 +718,13 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     _, _, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--report", str(report))
     lines = report.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
-        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max"
+        "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;" \
+        "wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage"
     rows = [line.split(";") for line in lines[1:]]
-    assert {r[0] for r in rows} == {"bedarf", "bereich", "schicht"}
-    assert all(len(r) == 13 and r[4].isdigit() for r in rows)
-    assert all(re.match(r"E\d+$", r[1]) and r[7:] == ["", "", "", "", "", ""] for r in rows if r[0] != "bedarf")
+    assert {r[0] for r in rows} == {"bedarf", "bereich", "person", "schicht"}
+    assert all(len(r) == 18 and r[4].isdigit() for r in rows)
+    assert all(r[13:] == [""] * 5 for r in rows if r[0] != "person")
+    assert all(re.match(r"E\d+$", r[1]) and r[7:13] == ["", "", "", "", "", ""] for r in rows if r[0] != "bedarf")
     assert all(r[3] == "" and r[5] in ("ja", "nein") and r[6] == "" for r in rows if r[0] == "bereich")
     demand = [r for r in rows if r[0] == "bedarf"]
     assert [(r[2], r[7]) for r in demand] == [(a["id"], c) for a in sorted(imported[0]["areas"], key=lambda a: a["id"])
@@ -796,8 +798,8 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
     assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
-                                              "", "", "", ""]
-    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""]
+                                              "", "", "", ""] + [""] * 5
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 5
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
@@ -909,7 +911,7 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
     demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
     assert list(demand) == [*CODES, "HOL"]
-    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"]
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 5
     assert sum(int(r[4]) for r in demand.values()) == counted
     assert sum(int(r[10]) for r in demand.values()) == left_out
     # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
@@ -938,9 +940,9 @@ def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path
         "Schichten ohne Bereich: 2 Schichten, 13 Dienste, 116.0 Stunden in den 1 Monaten davor"]
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
     assert [r for r in rows if r[0] in ("ignoriert", "nicht_zugeordnet")] == [
-        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""],
-        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""]]
-    assert all(len(r) == 13 for r in rows) and rows[0][-2:] == ["stunden_historie", "spitze_historie_max"]
+        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 5,
+        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 5]
+    assert all(len(r) == 18 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
     assert result == before  # the dataset does not know these duties
 
     none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
@@ -1190,3 +1192,84 @@ def test_percentile_is_nearest_rank():
     assert percentile_up([0, 0, 0, 0, 0, 0, 0, 0, 1, 1], 90) == 1
     assert percentile_up([5], 90) == 5 and percentile_up([0, 3], 90) == 3
     assert percentile_up(list(range(31)), 90) == 27  # rank ceil(27.9) = 28
+
+
+# ── shift mix ─────────────────────────────────────────────────────
+
+def _mix_area(folder, tmp_path):
+    """_HistoryArea with a second area HY: H6 (06:00-14:00, EARLY) belongs to HY, 9203 also holds HY."""
+    hx = _HistoryArea(folder, tmp_path)
+    hx.mapping["areas"].append({"id": "HY", "name": "Zweiter Bereich", "color": "#777777"})
+    hx.mapping["shifts"].insert(0, {"match": "H6", "areaId": "HY"})
+    hx.add("5GROUP", ID=951, NAME="Team Zwei", SHORTNAME="GZ", POSITION=951, HIDE=0, SUPERID=0)
+    hx.mapping["groups"].append({"match": "Team Zwei", "areaIds": ["HX", "HY"]})
+    hx.add("5GRASG", EMPLOYEEID=9203, GROUPID=951)
+    hx.duty(9201, "H2", DECEMBER[:9])  # 07:00-15:00, DAY
+    hx.duty(9201, "H3", DECEMBER[9:10])  # 19:00-07:00, NIGHT
+    hx.duty(9202, "H1", DECEMBER[:7])
+    hx.duty(9202, "H6", DECEMBER[7:10])  # HY is not an area of 9202
+    hx.duty(9203, "H1", DECEMBER[:6])
+    hx.duty(9203, "H6", DECEMBER[6:10])
+    hx.duty(9204, "H1", DECEMBER[:9])  # below the minimum
+    hx.duty(9205, "H1", DECEMBER[:10])  # one of them on a day of full-day absence
+    leave = {r["SHORTNAME"]: r["ID"] for r in hx.rows("5LEAVT")}
+    hx.add("5ABSEN", EMPLOYEEID=9205, DATE=DECEMBER[0].isoformat(), LEAVETYPID=leave["K"], TYPE=0, INTERVAL=0)
+    hx.add("5RESTR", EMPLOYEEID=9201, WEEKDAY=2, SHIFTID=hx.shift["H4"], RESTRICT=1)
+    return hx
+
+
+def test_shift_mix_is_the_share_of_the_counted_duties(folder, tmp_path):
+    hx = _mix_area(folder, tmp_path)
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("mix.json", "--report", str(report))
+    people = {p["id"]: p for p in result["people"]}
+    assert people["E9201"]["shiftMix"] == {"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"HX": 1.0}}
+    # Categories over all counted duties, areas only over the person's areas.
+    assert people["E9202"]["areaIds"] == ["HX"]
+    assert people["E9202"]["shiftMix"] == {"categories": {"EARLY": 0.3, "DAY": 0.7}, "areas": {"HX": 1.0}}
+    assert people["E9203"]["shiftMix"] == {"categories": {"EARLY": 0.4, "DAY": 0.6}, "areas": {"HX": 0.6, "HY": 0.4}}
+    assert "shiftMix" not in people["E9204"] and "shiftMix" not in people["E9205"]
+    assert "shiftMix" not in people["E9206"]  # no duties at all
+    with_mix = sum("shiftMix" in p for p in result["people"])
+    assert f"Schichtmix aus der Historie: {with_mix} Mitarbeiter mit Mix, {len(people) - with_mix} mit weniger als " \
+        "10 Diensten in den 1 Monaten davor ohne Mix" in warnings
+
+    rows = {r[1]: r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
+            if r[0] == "person"}
+    assert set(rows) == set(people)
+    assert rows["E9201"] == ["person", "E9201", "", "", "10", *[""] * 8, "40.0", "HX", "DAY 0.900, NIGHT 0.100",
+                             "HX 1.000", "1"]
+    assert rows["E9203"][13:] == ["40.0", "HX HY", "EARLY 0.400, DAY 0.600", "HX 0.600, HY 0.400", "0"]
+    assert rows["E9204"][4] == "9" and rows["E9204"][15:17] == ["", ""]
+    assert rows["E9205"][4] == "9"  # the duty on the day of absence does not count
+
+    lower, _, _ = hx.export("lower.json", "--mix-min-duties", "9")
+    assert {p["id"]: p["shiftMix"] for p in lower["people"] if "shiftMix" in p}["E9204"] == \
+        {"categories": {"DAY": 1.0}, "areas": {"HX": 1.0}}
+
+
+def test_without_shift_mix_the_dataset_is_unchanged(folder, tmp_path):
+    hx = _mix_area(folder, tmp_path)
+    report = tmp_path / "bericht.csv"
+    with_mix, _, _ = hx.export("mix.json")
+    _, warnings, _ = hx.export("plain.json", "--no-shift-mix", "--report", str(report))
+    for p in with_mix["people"]:
+        p.pop("shiftMix", None)
+    expected = json.dumps(with_mix, ensure_ascii=False, indent=1) + "\n"
+    assert (tmp_path / "plain.json").read_text(encoding="utf-8") == expected
+    assert not [w for w in warnings if w.startswith("Schichtmix")]
+    rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines() if line.startswith("person;")]
+    assert rows and all(r[15:17] == ["", ""] for r in rows)
+
+
+def test_shift_mix_needs_a_minimum_of_one(folder, tmp_path):
+    proc = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--mix-min-duties", "0")
+    assert proc.returncode == 1 and "Schichtmix" in proc.stderr and not (tmp_path / "x.json").exists()
+
+
+def test_shift_mix_shares_are_rounded_to_sum_to_one():
+    assert _shares(Counter(A=1, B=1, C=1), ["A", "B", "C"]) == {"A": 0.334, "B": 0.333, "C": 0.333}
+    assert _shares(Counter(A=1, B=2000), ["A", "B"]) == {"B": 1.0}  # a share rounded to 0 is left out
+    assert _shares(Counter(A=2, B=1, C=1, D=1, E=1, F=1), list("ABCDEF")) == \
+        {"A": 0.285, "B": 0.143, "C": 0.143, "D": 0.143, "E": 0.143, "F": 0.143}
+    assert _shares(Counter(X=5), ["A"]) == {}
