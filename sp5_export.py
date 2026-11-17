@@ -46,7 +46,8 @@ def main(argv: list[str] | None = None) -> int:
                                          "Bedarf je Bereich und Tagestyp, eine Zeile je Mitarbeiter, verworfene "
                                          "Dienste je Grund, abweichende Wochenstunden, Korrekturen")
     parser.add_argument("--corrections", help="Korrekturdatei (JSON, Format dispofold/corrections): Stammdaten "
-                                              "einzelner Mitarbeiter, zuletzt angewendet")
+                                              "einzelner Mitarbeiter, ab Version 2 Ausschlüsse und Bedarf je "
+                                              "Bereich, zuletzt angewendet")
     parser.add_argument("--mapping", required=True, help="Zuordnungsdatei (JSON)")
     parser.add_argument("--out", required=True, help="Ausgabedatei (JSON)")
     args = parser.parse_args(argv)
@@ -101,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
                     "einschraenkung", "tagestyp", "spitze_historie", "spitze_sp5",
                     "dienste_nicht_uebernommen", "stunden_historie", "spitze_historie_max", "wochenstunden",
                     "bereiche", "mix_kategorien", "mix_bereiche", "auf_anfrage", "grund", "sp5_schicht", "calcbase",
-                    "hrsweek", "wochenstunden_calcbase", "feld", "status", "wert_export", "wert_korrektur"])
+                    "hrsweek", "wochenstunden_calcbase", "feld", "status", "wert_export", "wert_korrektur",
+                    "dienste_nicht_uebernommen_gezaehlt"])
         w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed

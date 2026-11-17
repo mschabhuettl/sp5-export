@@ -39,7 +39,7 @@ DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
 TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
 DEMAND_SOURCES = ("history", "sp5")
-REPORT_COLUMNS = 27
+REPORT_COLUMNS = 28
 MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
 MIX_MIN_DUTIES = 10  # default: people with fewer counted duties in the history window get no shift mix
 # Duties in the planning months on shifts in ignoreShifts become absences of this type (only when there are any).
@@ -354,6 +354,8 @@ class _Import:
         for a in self.table("5GRASG", required=True):
             if groups.get(a.get("GROUPID"), "ignore") != "ignore":
                 member[a.get("EMPLOYEEID")].append(groups[a.get("GROUPID")])
+        # Their duties stay out of the demand from the history as well.
+        self.excluded_people = {f"E{eid}" for eid, values in member.items() if "exclude" in values}
         self.person_by_sp5: dict[int, dict] = {}
         self.no_area: dict[int, tuple[dict, date | None, date | None]] = {}
         dropped = self.dropped = Counter()
@@ -673,12 +675,14 @@ class _Import:
     def demand_from_history(self, holiday_dates: set[str], sp5_rules: list[dict]) -> list[dict]:
         """Demand from the real staffing in the history window: per area and day type (MON..SUN, HOL from the
         holidays of the history) the median over all days of that type of the people on duty at once, in segments
-        between the boundaries of the area's worked shifts. A duty counts on the day it starts. Only duties of
-        exported people count; the others are reported (counts only) next to the peak of the SP5 demand."""
+        between the boundaries of the area's worked shifts. A duty counts on the day it starts. The duties of
+        everyone count, also of people not exported (left, not yet started, hidden, without area or weekly hours):
+        others had to take them over. Only people in excludeGroups do not count; their duties are reported (counts
+        only) next to the peak of the SP5 demand, and so are the counted ones of people not exported."""
         end = self.first - timedelta(days=1)
         everyone = {e.get("ID"): {"id": f"E{e.get('ID')}"} for e in self.table("5EMPL", required=True)}
         exported = {p["id"] for p in self.person_by_sp5.values()}
-        by_day, counted, left_out = defaultdict(list), Counter(), Counter()
+        by_day, counted, left_out, outside = defaultdict(list), Counter(), Counter(), Counter()
         self.rejected: list = []  # rows on shifts not taken, for dropped_report
         self.left_out_shifts: Counter = Counter()  # shift id -> duties of people not exported
         days = [self.history_start + timedelta(days=k) for k in range((end - self.history_start).days + 1)]
@@ -688,9 +692,11 @@ class _Import:
 
         for pid, d, s in self.duties(self.history_start, end, everyone, quiet=True, rejected=self.rejected):
             if pid not in exported:
-                left_out[(s["areaId"], day_type(d))] += 1
                 self.left_out_shifts[s["id"]] += 1
-                continue
+                if pid in self.excluded_people:
+                    left_out[(s["areaId"], day_type(d))] += 1
+                    continue
+                outside[(s["areaId"], day_type(d))] += 1
             counted[(s["areaId"], day_type(d))] += 1
             by_day[(s["areaId"], d)].append(interval(s["start"], s["end"]))
         rules, months = [], self.history_months
@@ -729,11 +735,12 @@ class _Import:
                           default=0)
                 peaks.append(f"{code} {low}-{high}/{sp5}")
                 self.report_rows.append(("bedarf", "", area, "", counted[(area, code)], "", "", code, low, sp5,
-                                         left_out[(area, code)], "", high))
+                                         left_out[(area, code)], "", high, *[""] * 14, outside[(area, code)]))
             done, skipped = sum(counted[(area, c)] for c in codes), sum(left_out[(area, c)] for c in codes)
+            others = sum(outside[(area, c)] for c in codes)
             self.warn(f"Bedarf im Bereich {area}, Spitze je Tagestyp aus der Historie/aus SP5: {', '.join(peaks)}; "
-                      f"{done} Dienste in den {months} Monaten davor gezählt, {skipped} nicht gezählt (Mitarbeiter "
-                      "nicht übernommen)")
+                      f"{done} Dienste in den {months} Monaten davor gezählt, davon {others} von Mitarbeitern, die "
+                      f"nicht übernommen werden; {skipped} nicht gezählt (ausgeschlossene Gruppe)")
         if self.demand_source == "history":
             self.warn(f"Bedarf aus der Historie: Median je Bereich und Tagestyp über die {months} Monate davor")
         else:
@@ -763,7 +770,8 @@ class _Import:
         nicht zugeordneter Schicht ignoriert" of the history window; not mapped and ignored are exactly the
         duties of unmapped_report, hidden and long or timeless shifts are counted the same way, "sonstige" are the
         other rows (no shift of 5SHIFT, a day of full-day absence, a second row of the day). People not exported:
-        their duties on shifts taken (the "nicht gezählt" of the demand lines), and their rows on other shifts."""
+        their duties on shifts taken (counted in the demand lines unless in excludeGroups), and their rows on other
+        shifts."""
         window = f"{self.history_start}..{self.first - timedelta(days=1)}"
         exported = {p["id"] for p in self.person_by_sp5.values()}
         counts = Counter()  # (reason, SP5 shift id) -> duties
@@ -812,7 +820,7 @@ class _Import:
                   "übernommen werden (wie die Warnung '... Dienste "
                   f"{window} mit nicht zugeordneter Schicht ignoriert')")
         self.warn(f"{head}, Mitarbeiter nicht übernommen: {total('mitarbeiter_nicht_uebernommen')} auf übernommenen "
-                  "Schichten (die nicht gezählten der Bedarfszeilen), dazu "
+                  "Schichten (im Bedarf gezählt außer ausgeschlossene Gruppe), dazu "
                   f"{total('mitarbeiter_und_schicht_nicht_uebernommen')} auf Schichten, die nicht übernommen werden")
 
     # ── duties ───────────────────────────────────────────────
@@ -1136,7 +1144,7 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     `demand` "history" takes the demand from the staffing in the history window, "sp5" from the SP5 demand.
     `mix_min_duties` N gives everyone with at least N counted duties in the history window a shift mix; None
     writes none.
-    `corrections` (the people map of a corrections file, see corrections.py) is applied last; check "korrektur"
+    `corrections` (a corrections file as corrections.load returns it) is applied last; check "korrektur"
     per corrected field (person, reason; field, status, exported value, corrected value)."""
     validate_mapping(mapping)
     months = [month]
@@ -1164,12 +1172,14 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
                   mix_min_duties)
     dataset = job.run()
     if corrections is not None:
-        rows, warnings, (people, applied, skipped) = corr.apply(dataset, corrections)
+        rows, warnings, (people, applied, skipped), summary = corr.apply(dataset, corrections)
         job.report_rows += [("korrektur", pid, *[""] * 16, why, "", "", "", "", field, status, old, new)
                             for pid, field, status, why, old, new in rows]
         job.warnings += warnings
         job.warn(f"Korrekturen: {people} Mitarbeiter korrigiert, {applied} Felder angewendet, {skipped} Felder "
                  "übersprungen")
+        if summary:
+            job.warn(summary)
     if report is not None:
         rows = [r + ("",) * (REPORT_COLUMNS - len(r)) for r in job.report_rows]
         report.extend(sorted(rows, key=lambda r: (r[0], int(r[1][1:]) if r[1] else 0, r[2], r[3])))

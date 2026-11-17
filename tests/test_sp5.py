@@ -13,6 +13,7 @@ from datetime import date
 import pytest
 from exportcli import MAPPING, ROOT, export, run
 
+from sp5export import corrections as corr
 from sp5export.dbf import read_table
 from sp5export.demand import median_up, percentile_up, start_day_windows
 from sp5export.feasibility import capacity_hours, check_feasibility, rules_for_day
@@ -514,9 +515,9 @@ def test_weekly_hours_report_names_who_differs_and_the_value_used(source, folder
     rows = {r[1]: r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "wochenstunden"}
     assert rows[f"E{p[0]}"] == ["wochenstunden", f"E{p[0]}", *[""] * 11, "20.0", *[""] * 6, "0", "40.0", "20.0",
-                                *[""] * 4]
-    assert rows[f"E{p[1]}"][13:] == ["30.0", *[""] * 6, "2", "40.0", "30.0", *[""] * 4]
-    assert rows[f"E{p[4]}"][13:] == ["", *[""] * 6, "0", "20.0", "0.0", *[""] * 4]
+                                *[""] * 5]
+    assert rows[f"E{p[1]}"][13:] == ["30.0", *[""] * 6, "2", "40.0", "30.0", *[""] * 5]
+    assert rows[f"E{p[4]}"][13:] == ["", *[""] * 6, "0", "20.0", "0.0", *[""] * 5]
     assert f"E{p[2]}" not in rows and f"E{p[3]}" not in rows
     hours = {p["id"]: p["weeklyHours"] for p in result["people"]}
     assert all(r[13] == str(hours[pid]) for pid, r in rows.items() if pid != f"E{p[4]}")
@@ -746,13 +747,14 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
         "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;" \
         "wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;" \
-        "wochenstunden_calcbase;feld;status;wert_export;wert_korrektur"
+        "wochenstunden_calcbase;feld;status;wert_export;wert_korrektur;dienste_nicht_uebernommen_gezaehlt"
     rows = [line.split(";") for line in lines[1:]]
     assert {r[0] for r in rows} == {"bedarf", "bereich", "person", "schicht", "verworfen", "wochenstunden"}
-    assert all(len(r) == 27 for r in rows)
+    assert all(len(r) == 28 for r in rows)
     assert all(r[4].isdigit() for r in rows if r[0] != "wochenstunden")
-    assert all(r[13:] == [""] * 14 for r in rows if r[0] not in ("person", "verworfen", "wochenstunden"))
-    assert all(r[18:] == [""] * 9 for r in rows if r[0] == "person")
+    assert all(r[13:] == [""] * 15 for r in rows if r[0] not in ("person", "verworfen", "wochenstunden", "bedarf"))
+    assert all(r[13:27] == [""] * 14 and r[27].isdigit() for r in rows if r[0] == "bedarf")
+    assert all(r[18:] == [""] * 10 for r in rows if r[0] == "person")
     # Weekly hours: one row per person counted in the summary line, the value written is the CALCBASE value.
     hours = {p["id"]: p["weeklyHours"] for p in imported[0]["people"]}
     weekly = [r for r in rows if r[0] == "wochenstunden"]
@@ -837,8 +839,8 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
     assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
-                                              "", "", "", ""] + [""] * 14
-    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 14
+                                              "", "", "", ""] + [""] * 15
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 15
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
@@ -914,11 +916,10 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     hx.duty(9203, "H4", [d for d in DECEMBER if d not in HOLIDAYS])  # a second night 22:00-06:00
     hx.duty(9204, "H2", workdays)  # 07:00-15:00 Monday to Friday
     hx.duty(9205, "H1", sorted(HOLIDAYS))  # on holidays only
-    # Not exported: someone in an excluded group, and a hidden employee.
+    # Someone in an excluded group does not count (people not exported otherwise do: see
+    # test_history_demand_counts_people_not_exported).
     hx.add("5GRASG", EMPLOYEEID=9206, GROUPID=next(g["ID"] for g in hx.rows("5GROUP") if g["NAME"] == "Ehrenamt"))
     hx.duty(9206, "H1", DECEMBER)
-    hx.update("5EMPL", 9207, HIDE=1)
-    hx.duty(9207, "H2", DECEMBER[:5])
     report = tmp_path / "bericht.csv"
     result, warnings, _ = hx.export("dataset.json", "--report", str(report))
 
@@ -939,22 +940,22 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
         assert {h: _on_duty(result, "HX", code, h * 60) for h in hours} == hours, code
     assert all(r["date"] is None for r in result["demand"])
 
-    left_out = 31 + 5
+    left_out = 31
     counted = 31 + 31 + 28 + len(workdays) + 3
     line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
     assert line == ("Bedarf im Bereich HX, Spitze je Tagestyp aus der Historie/aus SP5: MON 2-2/0, TUE 2-2/0, "
                     "WED 2-2/0, THU 2-2/0, FRI 2-2/0, SAT 2-2/0, SUN 2-2/0, HOL 2-2/0; "
-                    f"{counted} Dienste in den 1 Monaten davor gezählt, "
-                    f"{left_out} nicht gezählt (Mitarbeiter nicht übernommen)")
+                    f"{counted} Dienste in den 1 Monaten davor gezählt, davon 0 von Mitarbeitern, die nicht "
+                    f"übernommen werden; {left_out} nicht gezählt (ausgeschlossene Gruppe)")
     assert "Bedarf aus der Historie: Median je Bereich und Tagestyp über die 1 Monate davor" in warnings
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
     demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
     assert list(demand) == [*CODES, "HOL"]
-    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 14
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 14 + ["0"]
     assert sum(int(r[4]) for r in demand.values()) == counted
     assert sum(int(r[10]) for r in demand.values()) == left_out
     # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
-    assert int(demand["TUE"][10]) == 4 + 1  # 4 Tuesdays of the excluded person, 2026-12-01 of the hidden one
+    assert int(demand["TUE"][10]) == 4  # the 4 Tuesdays of the excluded person
 
 
 def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path):
@@ -979,9 +980,9 @@ def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path
         "Schichten ohne Bereich: 2 Schichten, 13 Dienste, 116.0 Stunden in den 1 Monaten davor"]
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
     assert [r for r in rows if r[0] in ("ignoriert", "nicht_zugeordnet")] == [
-        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 14,
-        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 14]
-    assert all(len(r) == 27 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
+        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 15,
+        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 15]
+    assert all(len(r) == 28 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
     assert result == before  # the dataset does not know these duties
 
     none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
@@ -1038,8 +1039,8 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
         some of its own in the last week)."""
         line = next(w for w in lines if w.startswith(f"{head}, Mitarbeiter nicht übernommen: "))
         m = re.match(rf"{head}, Mitarbeiter nicht übernommen: (\d+) Dienste, ([\d.]+) Stunden auf übernommenen "
-                     r"Schichten \(die nicht gezählten der Bedarfszeilen\), dazu (\d+) Dienste, ([\d.]+) Stunden "
-                     "auf Schichten, die nicht übernommen werden$", line)
+                     r"Schichten \(im Bedarf gezählt außer ausgeschlossene Gruppe\), dazu (\d+) Dienste, "
+                     r"([\d.]+) Stunden auf Schichten, die nicht übernommen werden$", line)
         return int(m[1]), float(m[2]), int(m[3]), float(m[4])
 
     was, now = not_exported(before_warnings), not_exported(warnings)
@@ -1049,7 +1050,8 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
     assert "17 Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert" in warnings
     assert "Schicht 'H6' ignoriert: 4 Dienste, 32.0 Stunden in den 1 Monaten davor" in warnings
     assert "Schicht 'H5' nicht zugeordnet: 3 Dienste, 36.0 Stunden in den 1 Monaten davor" in warnings
-    left_out = [int(re.search(r"(\d+) nicht gezählt", w)[1]) for w in warnings if w.startswith("Bedarf im Bereich")]
+    left_out = [int(re.search(r"(\d+) nicht gezählt", w)[1]) + int(re.search(r"davon (\d+) von", w)[1])
+                for w in warnings if w.startswith("Bedarf im Bereich")]
     assert sum(left_out) == now[0]
 
     rows = [r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
@@ -1057,8 +1059,8 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
     assert sum(int(r[4]) for r in rows if r[18] == "mitarbeiter_nicht_uebernommen") == now[0]
     assert sum(int(r[4]) for r in rows if not r[18].startswith("mitarbeiter_")) == 17
     rows = [r for r in rows if r[3] in ("", "LZ", "TZ", *HX_SHIFTS)]
-    assert all(len(r) == 27 and r[1] == r[2] == "" and r[5:11] == [""] * 6 and r[12:18] == [""] * 6
-               and r[20:] == [""] * 7 for r in rows)
+    assert all(len(r) == 28 and r[1] == r[2] == "" and r[5:11] == [""] * 6 and r[12:18] == [""] * 6
+               and r[20:] == [""] * 8 for r in rows)
     assert sorted((r[3], r[18], r[19], r[4], r[11]) for r in rows) == [
         ("", "unbekannte_schicht", "999", "1", "0.0"),
         ("H1", "mitarbeiter_nicht_uebernommen", str(hx.shift["H1"]), "3", "36.0"),
@@ -1366,7 +1368,7 @@ def test_shift_mix_is_the_share_of_the_counted_duties(folder, tmp_path):
             if r[0] == "person"}
     assert set(rows) == set(people)
     assert rows["E9201"] == ["person", "E9201", "", "", "10", *[""] * 8, "40.0", "HX", "DAY 0.900, NIGHT 0.100",
-                             "HX 1.000", "1", *[""] * 9]
+                             "HX 1.000", "1", *[""] * 10]
     assert rows["E9203"][13:18] == ["40.0", "HX HY", "EARLY 0.400, DAY 0.600", "HX 0.600, HY 0.400", "0"]
     assert rows["E9204"][4] == "9" and rows["E9204"][15:17] == ["", ""]
     assert rows["E9205"][4] == "9"  # the duty on the day of absence does not count
@@ -1453,8 +1455,8 @@ def test_corrections_replace_present_fields_and_leave_absent_ones(folder, tmp_pa
     assert "Korrekturen: 3 Mitarbeiter korrigiert, 11 Felder angewendet, 0 Felder übersprungen" in warnings
 
     rows = _korrektur_rows(report)
-    assert all(len(r) == 27 and r[2:18] == [""] * 16 and r[18] == "" and r[19:23] == [""] * 4 for r in rows)
-    assert [(r[1], *r[23:]) for r in rows] == [
+    assert all(len(r) == 28 and r[2:18] == [""] * 16 and r[18] == "" and r[19:23] == [""] * 4 for r in rows)
+    assert [(r[1], *r[23:27]) for r in rows] == [
         ("E9201", "weeklyHours", "angewendet", "40.0", "30"),
         ("E9201", "hoursAccount", "angewendet", "0.0", "-4.5"),
         ("E9201", "compRestBalance", "angewendet", "0", "2"),
@@ -1541,7 +1543,7 @@ def test_both_dates_and_areas_with_mix_are_checked_against_the_corrected_values(
 
 @pytest.mark.parametrize("header, message", [
     ({"format": "dispofold/dataset"}, "unbekanntes Format"),
-    ({"version": 2}, "Version nicht unterstützt"),
+    ({"version": 3}, "Version nicht unterstützt"),
     ({"version": "1"}, "Version nicht unterstützt"),
     ({"people": []}, "'people' muss ein Objekt sein"),
 ])
@@ -1571,3 +1573,141 @@ def test_empty_corrections_leave_the_dataset_unchanged(folder, exported, tmp_pat
         .encode("utf-8") + b"\n"
     assert "Korrekturen: 0 Mitarbeiter korrigiert, 0 Felder angewendet, 0 Felder übersprungen" in warnings
     assert not [w for w in exported[1] if w.startswith("Korrektur")]
+
+
+def test_history_demand_counts_people_not_exported(folder, tmp_path):
+    hx = _HistoryArea(folder, tmp_path)
+    hx.duty(9201, "H1", DECEMBER)  # 07:00-19:00, exported
+    hx.update("5EMPL", 9202, EMPEND="2026-12-31")  # left before the planning month
+    hx.duty(9202, "H3", DECEMBER)  # 19:00-07:00
+    hx.update("5EMPL", 9203, HIDE=1)
+    hx.duty(9203, "H4", DECEMBER)  # 22:00-06:00
+    hx.add("5EMPL", ID=9210, NAME="Historie", FIRSTNAME="Person", SHORTNAME="H9210", NUMBER="9210", POSITION=9210,
+           HIDE=0, WORKDAYS="1 1 1 1 1 0 0 0", CALCBASE=1, HRSDAY=8.0, HRSWEEK=40.0, HRSMONTH=0.0, HRSTOTAL=0.0,
+           EMPSTART="2015-01-01")  # in no group: no area
+    hx.duty(9210, "H2", DECEMBER)  # 07:00-15:00
+    hx.add("5GRASG", EMPLOYEEID=9204, GROUPID=next(g["ID"] for g in hx.rows("5GROUP") if g["NAME"] == "Ehrenamt"))
+    hx.duty(9204, "H2", DECEMBER)  # excluded group: does not count
+    hx.duty(9205, "H2", DECEMBER)  # exported, then excluded by the corrections file: counts
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("dataset.json", "--report", str(report))
+    ids = {p["id"] for p in result["people"]}
+    assert "E9205" in ids and not {"E9202", "E9203", "E9204", "E9210"} & ids
+    for code in ("MON", "SAT", "HOL"):
+        assert {h: _on_duty(result, "HX", code, h * 60) for h in (6, 10, 16, 20, 23, 30, 31)} == \
+            {6: 0, 10: 3, 16: 1, 20: 1, 23: 2, 30: 1, 31: 0}, code
+    line = next(w for w in warnings if w.startswith("Bedarf im Bereich HX, "))
+    assert line.endswith("; 155 Dienste in den 1 Monaten davor gezählt, davon 93 von Mitarbeitern, die nicht "
+                         "übernommen werden; 31 nicht gezählt (ausgeschlossene Gruppe)")
+    demand = [r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
+              if r[0] == "bedarf" and r[2] == "HX"]
+    assert sum(int(r[4]) for r in demand) == 155 and sum(int(r[27]) for r in demand) == 93
+    assert sum(int(r[10]) for r in demand) == 31
+
+    path = _corrections(tmp_path, {"E9205": {"exclude": True}}, {"version": 2})
+    excluded, _, _ = hx.export("excluded.json", "--corrections", str(path))
+    assert excluded["demand"] == result["demand"] and "E9205" not in {p["id"] for p in excluded["people"]}
+
+
+def _person_with_everything(dataset):
+    """An exported person with a restriction, history, an absence and a previous duty."""
+    period = dataset["periods"][0]
+    sets = [{r["personId"] for r in items} for items in (dataset["restrictions"], dataset["history"],
+                                                         period["absences"], period["previousDuties"])]
+    return sorted(set.intersection(*sets))[0]
+
+
+def test_exclude_drops_the_person_and_everything_that_refers_to_them(folder, exported, tmp_path):
+    plain = exported[0]
+    pid = _person_with_everything(plain)
+    other = next(p["id"] for p in plain["people"] if p["id"] != pid)
+    path = _corrections(tmp_path, {pid: {"exclude": True, "weeklyHours": 1.0, "lastName": "X", "note": "weg"},
+                                   other: {"exclude": False, "weeklyHours": 12.5},
+                                   "E99999": {"exclude": True}}, {"version": 2})
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
+                                 "--corrections", str(path), "--report", str(report))  # passes the contract
+    assert f'"{pid}"' not in json.dumps(result)
+
+    def without(d):
+        d = copy.deepcopy(d)
+        corr._drop(d, pid)
+        return d
+    expected = without(plain)
+    next(p for p in expected["people"] if p["id"] == other)["weeklyHours"] = 12.5
+    assert result == expected
+    assert len(result["people"]) == len(plain["people"]) - 1
+    assert [(r[1], *r[23:27], r[18]) for r in _korrektur_rows(report)] == [
+        (pid, "exclude", "ausgeschlossen", "", "true", ""),
+        (other, "weeklyHours", "angewendet", str(next(p["weeklyHours"] for p in plain["people"] if p["id"] == other)),
+         "12.5", ""),
+        ("E99999", "exclude", "person_fehlt", "", "", "Mitarbeiter nicht exportiert")]
+    assert "Korrekturen: 2 Mitarbeiter korrigiert, 2 Felder angewendet, 1 Felder übersprungen" in warnings
+    assert "Korrekturen Version 2: 1 Mitarbeiter ausgeschlossen, Bedarf in 0 Bereichen ersetzt, 0 Bereiche " \
+        "übersprungen" in warnings
+
+
+def test_exclude_must_be_true_or_false(folder, exported, tmp_path):
+    pid = exported[0]["people"][0]["id"]
+    path = _corrections(tmp_path, {pid: {"exclude": "ja", "compRestBalance": 3}}, {"version": 2})
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
+                                 "--corrections", str(path), "--report", str(report))
+    assert result["people"][0]["compRestBalance"] == 3
+    assert [(r[23], r[24], r[18]) for r in _korrektur_rows(report)] == [
+        ("exclude", "ungueltig", "muss true oder false sein"), ("compRestBalance", "angewendet", "")]
+    assert f"Korrektur {pid} exclude übersprungen: muss true oder false sein" in warnings
+
+
+def test_demand_corrections_replace_the_rules_of_an_area(folder, exported, tmp_path):
+    plain = exported[0]
+    rule = {"days": ["MON", "TUE"], "date": None, "from": "05:20", "to": "05:20", "min": 1, "max": 1}
+    dated = {"date": "2027-01-20", "from": "08:00", "to": "12:00", "min": 2}
+    path = _corrections(tmp_path, {}, {"version": 2, "demand": {
+        "DR": [rule, dated], "TV": [],
+        "AN": [{**rule, "max": 0}],  # max below min
+        "LF": [{**rule, "areaId": "LF"}],
+        "TS": [{**rule, "days": ["MO"]}],
+        "QQ": [rule],
+    }})
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
+                                 "--corrections", str(path), "--report", str(report))
+    count = Counter(r["areaId"] for r in plain["demand"])
+    assert [r for r in result["demand"] if r["areaId"] == "DR"] == [{"areaId": "DR", **rule}, {"areaId": "DR", **dated}]
+    assert not [r for r in result["demand"] if r["areaId"] == "TV"]
+    assert [r for r in result["demand"] if r["areaId"] not in ("DR", "TV")] == \
+        [r for r in plain["demand"] if r["areaId"] not in ("DR", "TV")]
+    # The replaced rules stand where the first rule of the area stood.
+    first = next(i for i, r in enumerate(plain["demand"]) if r["areaId"] == "DR")
+    assert result["demand"][first:first + 2] == [{"areaId": "DR", **rule}, {"areaId": "DR", **dated}]
+    assert [(r[1], *r[23:27], r[18]) for r in _korrektur_rows(report)] == [
+        ("", "demand:AN", "ungueltig", f"{count['AN']} Regeln", "", "max muss null oder eine ganze Zahl ab min sein"),
+        ("", "demand:DR", "angewendet", f"{count['DR']} Regeln", "2 Regeln", ""),
+        ("", "demand:TV", "angewendet", f"{count['TV']} Regeln", "0 Regeln", ""),
+        ("", "demand:LF", "ungueltig", f"{count['LF']} Regeln", "",
+         "Regel mit unbekanntem Schlüssel (areaId wird nicht angegeben)"),
+        ("", "demand:TS", "ungueltig", f"{count['TS']} Regeln", "",
+         "days muss eine Liste aus MON bis SUN und HOL sein"),
+        ("", "demand", "ungueltig", "", "", "unbekannte Bereichs-Id")]
+    assert "Korrekturen Version 2: 0 Mitarbeiter ausgeschlossen, Bedarf in 2 Bereichen ersetzt, 4 Bereiche " \
+        "übersprungen" in warnings
+    assert "Korrektur demand übersprungen: unbekannte Bereichs-Id" in warnings
+    assert not any("QQ" in w for w in warnings)
+
+
+def test_version_1_files_know_neither_exclude_nor_demand(folder, exported, tmp_path):
+    pid = exported[0]["people"][0]["id"]
+    path = _corrections(tmp_path, {pid: {"exclude": True}}, {"demand": {"DR": []}})
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
+                                 "--corrections", str(path), "--report", str(report))
+    assert result == exported[0]
+    assert [(r[1], *r[23:25], r[18]) for r in _korrektur_rows(report)] == [(pid, "", "ungueltig", "unbekanntes Feld")]
+    assert not [w for w in warnings if w.startswith("Korrekturen Version 2")]
+
+
+def test_demand_must_be_an_object_in_version_2(folder, tmp_path):
+    path = _corrections(tmp_path, {}, {"version": 2, "demand": []})
+    proc = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--corrections", str(path))
+    assert proc.returncode == 1 and "'demand' muss ein Objekt sein" in proc.stderr

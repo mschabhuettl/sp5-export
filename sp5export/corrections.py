@@ -1,6 +1,10 @@
 """Corrections file: person master data corrected by hand, applied to the exported dataset as the last step.
 
-{"format": "dispofold/corrections", "version": 1, "people": {"E123": {"note": "...", "weeklyHours": 30.0, ...}}}
+{"format": "dispofold/corrections", "version": 2, "people": {"E123": {"note": "...", "weeklyHours": 30.0, ...},
+ "E124": {"exclude": true}}, "demand": {"AN": [{"days": ["MON"], "date": null, "from": "07:00", ...}]}}
+
+Version 2 adds `exclude` (the person and everything that refers to them is not written) and `demand` (all demand
+rules of an area replaced); a version 1 file is read as before.
 
 A field that is present replaces the exported value completely, an absent field leaves it alone. Problems with
 single entries never stop the export: the field (or the person) is skipped and reported. Reports and warnings
@@ -14,7 +18,7 @@ from datetime import date
 from pathlib import Path
 
 FORMAT = "dispofold/corrections"
-VERSION = 1
+VERSION = 2
 CATEGORIES = ("EARLY", "DAY", "LATE", "NIGHT")
 # The person fields of the dataset that can be corrected, in the order they are applied; restrictions last.
 FIELDS = ("weeklyHours", "areaIds", "hoursAccount", "compRestBalance", "familyRules", "entryDate", "exitDate",
@@ -26,6 +30,8 @@ DATE = re.compile(r"\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 TIME = re.compile(r"([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$")
 RESTRICTION_KEYS = {"shiftId", "category", "weekday", "kind", "validFrom", "validTo"}
 FAMILY_RULE_KEYS = {"weekdays", "latestEnd", "earliestStart", "noNights", "note"}
+DEMAND_KEYS = {"days", "date", "from", "to", "min", "max"}
+DAY_CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "HOL")
 
 
 class CorrectionsError(Exception):
@@ -33,7 +39,7 @@ class CorrectionsError(Exception):
 
 
 def load(path: str | Path) -> dict:
-    """The people map of the corrections file; raises CorrectionsError (German) when the file cannot be used."""
+    """The corrections file (version, people, demand); raises CorrectionsError (German) when it cannot be used."""
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -46,7 +52,10 @@ def load(path: str | Path) -> dict:
         raise CorrectionsError(f"Korrekturdatei {path}: Version nicht unterstützt, unterstützt bis {VERSION}")
     if not isinstance(data.get("people"), dict):
         raise CorrectionsError(f"Korrekturdatei {path}: 'people' muss ein Objekt sein")
-    return data["people"]
+    demand = data.get("demand", {}) if version >= 2 else {}
+    if not isinstance(demand, dict):
+        raise CorrectionsError(f"Korrekturdatei {path}: 'demand' muss ein Objekt sein")
+    return {"version": version, "people": data["people"], "demand": demand}
 
 
 def _int(v) -> bool:
@@ -202,13 +211,51 @@ class _Check:
         return None
 
 
-def apply(dataset: dict, people: dict) -> tuple[list[tuple], list[str], tuple[int, int, int]]:
-    """Apply the corrections to `dataset` in place. Returns the report rows (person, field, status, reason,
-    exported value, corrected value), the warnings and the counts (people corrected, fields applied, skipped)."""
+def _demand_rules(rules) -> str | None:
+    """Checks the demand rules of one area like Dispofold's import; returns the reason or None."""
+    if not isinstance(rules, list):
+        return "muss eine Liste von Bedarfsregeln sein"
+    for r in rules:
+        if not isinstance(r, dict) or not set(r) <= DEMAND_KEYS:
+            return "Regel mit unbekanntem Schlüssel (areaId wird nicht angegeben)"
+        days, day = r.get("days"), r.get("date")
+        if days is not None and not (isinstance(days, list) and all(isinstance(d, str) and d in DAY_CODES
+                                                                     for d in days)):
+            return "days muss eine Liste aus MON bis SUN und HOL sein"
+        if day is not None and not _date(day):
+            return "date nicht im Format JJJJ-MM-TT"
+        if day is None and not days:
+            return "Regel braucht days oder date"
+        if not all(isinstance(r.get(k), str) and TIME.match(r[k]) for k in ("from", "to")):
+            return "from und to müssen Uhrzeiten HH:MM sein"
+        low, high = r.get("min"), r.get("max")
+        if not (_int(low) and low >= 0):
+            return "min muss eine ganze Zahl ab 0 sein"
+        if high is not None and not (_int(high) and high >= low):
+            return "max muss null oder eine ganze Zahl ab min sein"
+    return None
+
+
+def _drop(dataset: dict, pid: str) -> None:
+    """Remove the person and every entry that refers to them (restrictions, history, absences, wishes, fixed and
+    previous duties: any list entry with their personId)."""
+    dataset["people"] = [p for p in dataset["people"] if p["id"] != pid]
+    for holder in (dataset, *dataset["periods"]):
+        for key, items in holder.items():
+            if isinstance(items, list) and key != "people":
+                holder[key] = [x for x in items if not (isinstance(x, dict) and x.get("personId") == pid)]
+
+
+def apply(dataset: dict, corrections: dict) -> tuple[list[tuple], list[str], tuple[int, int, int], str | None]:
+    """Apply the corrections (as `load` returns them) to `dataset` in place. Returns the report rows (person,
+    field, status, reason, exported value, corrected value), the warnings, the counts (people corrected, fields
+    applied, skipped) and for version 2 a summary of exclude and demand."""
+    version, people = corrections["version"], corrections["people"]
     by_id = {p["id"]: p for p in dataset["people"]}
     check = _Check({a["id"] for a in dataset["areas"]}, {s["id"] for s in dataset["shifts"]})
+    known = FIELDS + FIXED + (("exclude",) if version >= 2 else ())
     rows, warnings = [], []
-    corrected, applied, skipped = 0, 0, 0
+    corrected, applied, skipped, excluded = 0, 0, 0, 0
     for key in sorted(people, key=lambda k: (0, int(k[1:])) if PERSON_ID.match(k) else (1, k)):
         entry = people[key]
         pid = key if PERSON_ID.match(key) else ""  # anything else is not a dataset id; never echoed
@@ -218,10 +265,28 @@ def apply(dataset: dict, people: dict) -> tuple[list[tuple], list[str], tuple[in
             why = "kein Objekt" if person is not None else (
                 "Mitarbeiter nicht exportiert" if pid else "keine Mitarbeiter-Id (E und SP5-Id)")
             status = "ungueltig" if person is not None else "person_fehlt"
-            rows += [(pid, f if f in FIELDS + FIXED else "", status, why, "", "") for f in fields or [""]]
+            rows += [(pid, f if f in known else "", status, why, "", "") for f in fields or [""]]
             skipped += max(len(fields), 1)
             warnings.append(f"Korrektur für {pid or 'eine unbekannte Id'} übersprungen: {why}")
             continue
+        if "exclude" in known and "exclude" in entry:
+            fields.remove("exclude")
+            value, why = entry["exclude"], None
+            if not isinstance(value, bool):
+                why = "muss true oder false sein"
+            elif value and len(dataset["people"]) == 1:
+                why = "letzter Mitarbeiter im Datensatz"
+            elif value:
+                _drop(dataset, pid)
+                rows.append((pid, "exclude", "ausgeschlossen", "", "", "true"))
+                applied += 1
+                corrected += 1
+                excluded += 1
+                continue  # the other fields of the person are ignored
+            if why is not None:
+                rows.append((pid, "exclude", "ungueltig", why, "", ""))
+                skipped += 1
+                warnings.append(f"Korrektur {pid} exclude übersprungen: {why}")
         changed = False
         own = [r for r in dataset["restrictions"] if r["personId"] == pid]
         for field in sorted(fields, key=lambda f: FIELDS.index(f) if f in FIELDS else len(FIELDS)):
@@ -249,4 +314,26 @@ def apply(dataset: dict, people: dict) -> tuple[list[tuple], list[str], tuple[in
             warnings.append(f"Korrektur {pid} {field if field in FIELDS + FIXED else '(unbekanntes Feld)'} "
                             f"übersprungen: {why}")
         corrected += changed
-    return rows, warnings, (corrected, applied, skipped)
+    if version < 2:
+        return rows, warnings, (corrected, applied, skipped), None
+    area_ids = [a["id"] for a in dataset["areas"]]
+    replaced, wrong = 0, 0
+    for area in sorted(corrections["demand"], key=lambda a: (area_ids.index(a) if a in area_ids else len(area_ids))):
+        rules = corrections["demand"][area]
+        own = [r for r in dataset["demand"] if r["areaId"] == area]
+        why = "unbekannte Bereichs-Id" if area not in area_ids else _demand_rules(rules)
+        field = f"demand:{area}" if area in area_ids else "demand"
+        if why is not None:
+            rows.append(("", field, "ungueltig", why, f"{len(own)} Regeln" if area in area_ids else "", ""))
+            wrong += 1
+            warnings.append(f"Korrektur {field} übersprungen: {why}")
+            continue
+        rows.append(("", field, "angewendet", "", f"{len(own)} Regeln", f"{len(rules)} Regeln"))
+        before = next((i for i, r in enumerate(dataset["demand"]) if r["areaId"] == area), len(dataset["demand"]))
+        at = sum(1 for r in dataset["demand"][:before] if r["areaId"] != area)
+        rest = [r for r in dataset["demand"] if r["areaId"] != area]
+        dataset["demand"] = rest[:at] + [{"areaId": area, **r} for r in rules] + rest[at:]
+        replaced += 1
+    summary = (f"Korrekturen Version 2: {excluded} Mitarbeiter ausgeschlossen, Bedarf in {replaced} Bereichen "
+               f"ersetzt, {wrong} Bereiche übersprungen")
+    return rows, warnings, (corrected, applied, skipped), summary
