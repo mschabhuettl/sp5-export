@@ -17,6 +17,7 @@ from pathlib import Path
 from sp5lib import calculations as sp5calc
 from sp5lib.color_utils import bgr_to_hex
 
+from . import corrections as corr
 from .dbf import DbfError, read_table
 from .demand import coverage_segments, median_up, percentile_up, start_day_windows
 from .feasibility import rules_for_day
@@ -38,7 +39,7 @@ DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
 TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
 DEMAND_SOURCES = ("history", "sp5")
-REPORT_COLUMNS = 23
+REPORT_COLUMNS = 27
 MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
 MIX_MIN_DUTIES = 10  # default: people with fewer counted duties in the history window get no shift mix
 # Duties in the planning months on shifts in ignoreShifts become absences of this type (only when there are any).
@@ -1119,7 +1120,8 @@ class _Import:
 def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = None,
                history_months: int = HISTORY_MONTHS, areas_from_history: int | None = None,
                report: list | None = None, shifts_from_history: int | None = None,
-               demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES) -> tuple[dict, list[str]]:
+               demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES,
+               corrections: dict | None = None) -> tuple[dict, list[str]]:
     """Read the SP5 folder (never written) and return the dataset of the months `month`..`to` and the warnings.
     `report` (a list) receives the rows (check, person id, area, shift code, duties in the history window, area
     from groups, restriction, day type, peak demand from the history, peak demand from SP5, duties left out,
@@ -1133,7 +1135,9 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     when not exported; CALCBASE, HRSWEEK, CALCBASE hours).
     `demand` "history" takes the demand from the staffing in the history window, "sp5" from the SP5 demand.
     `mix_min_duties` N gives everyone with at least N counted duties in the history window a shift mix; None
-    writes none."""
+    writes none.
+    `corrections` (the people map of a corrections file, see corrections.py) is applied last; check "korrektur"
+    per corrected field (person, reason; field, status, exported value, corrected value)."""
     validate_mapping(mapping)
     months = [month]
     while to and months[-1] < to:
@@ -1159,6 +1163,13 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history, demand,
                   mix_min_duties)
     dataset = job.run()
+    if corrections is not None:
+        rows, warnings, (people, applied, skipped) = corr.apply(dataset, corrections)
+        job.report_rows += [("korrektur", pid, *[""] * 16, why, "", "", "", "", field, status, old, new)
+                            for pid, field, status, why, old, new in rows]
+        job.warnings += warnings
+        job.warn(f"Korrekturen: {people} Mitarbeiter korrigiert, {applied} Felder angewendet, {skipped} Felder "
+                 "übersprungen")
     if report is not None:
         rows = [r + ("",) * (REPORT_COLUMNS - len(r)) for r in job.report_rows]
         report.extend(sorted(rows, key=lambda r: (r[0], int(r[1][1:]) if r[1] else 0, r[2], r[3])))

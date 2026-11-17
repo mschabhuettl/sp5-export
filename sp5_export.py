@@ -13,6 +13,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from sp5export import corrections as corr
 from sp5export.sp5 import DEMAND_SOURCES, MIX_MIN_DUTIES, Sp5Error, import_sp5, load_mapping
 from sp5export.timeutil import parse_month
 
@@ -43,7 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-shift-mix", action="store_true", help="keinen Schichtmix schreiben")
     parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter, "
                                          "Bedarf je Bereich und Tagestyp, eine Zeile je Mitarbeiter, verworfene "
-                                         "Dienste je Grund, abweichende Wochenstunden")
+                                         "Dienste je Grund, abweichende Wochenstunden, Korrekturen")
+    parser.add_argument("--corrections", help="Korrekturdatei (JSON, Format dispofold/corrections): Stammdaten "
+                                              "einzelner Mitarbeiter, zuletzt angewendet")
     parser.add_argument("--mapping", required=True, help="Zuordnungsdatei (JSON)")
     parser.add_argument("--out", required=True, help="Ausgabedatei (JSON)")
     args = parser.parse_args(argv)
@@ -61,18 +64,24 @@ def main(argv: list[str] | None = None) -> int:
             return _fail("Ausgabe- und Berichtsdatei dürfen nicht im SP5-Ordner liegen")
     if report == out:
         return _fail("Ausgabe- und Berichtsdatei müssen verschieden sein")
+    if args.corrections and Path(args.corrections).resolve() in (out, report):
+        return _fail("Ausgabe- und Berichtsdatei dürfen nicht die Korrekturdatei sein")
     try:
         mapping = load_mapping(args.mapping)
     except (OSError, ValueError) as e:
         return _fail(f"Zuordnungsdatei {args.mapping} nicht lesbar ({type(e).__name__})")
     except Sp5Error as e:
         return _fail(f"Zuordnungsdatei {args.mapping}: {e}")
+    try:
+        corrections = corr.load(args.corrections) if args.corrections else None
+    except corr.CorrectionsError as e:
+        return _fail(str(e))
 
     try:
         rows: list = []
         dataset, warnings = import_sp5(data, args.month, mapping, args.to, args.history_months,
                                        args.areas_from_history, rows, args.shifts_from_history, args.demand,
-                                       None if args.no_shift_mix else args.mix_min_duties)
+                                       None if args.no_shift_mix else args.mix_min_duties, corrections)
     except Sp5Error as e:
         return _fail(str(e))
     except Exception as e:
@@ -91,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
                     "einschraenkung", "tagestyp", "spitze_historie", "spitze_sp5",
                     "dienste_nicht_uebernommen", "stunden_historie", "spitze_historie_max", "wochenstunden",
                     "bereiche", "mix_kategorien", "mix_bereiche", "auf_anfrage", "grund", "sp5_schicht", "calcbase",
-                    "hrsweek", "wochenstunden_calcbase"])
+                    "hrsweek", "wochenstunden_calcbase", "feld", "status", "wert_export", "wert_korrektur"])
         w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed

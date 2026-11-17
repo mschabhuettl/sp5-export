@@ -513,9 +513,10 @@ def test_weekly_hours_report_names_who_differs_and_the_value_used(source, folder
     assert (tmp_path / "dataset.json").read_bytes() == (tmp_path / "plain.json").read_bytes()
     rows = {r[1]: r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "wochenstunden"}
-    assert rows[f"E{p[0]}"] == ["wochenstunden", f"E{p[0]}", *[""] * 11, "20.0", *[""] * 6, "0", "40.0", "20.0"]
-    assert rows[f"E{p[1]}"][13:] == ["30.0", *[""] * 6, "2", "40.0", "30.0"]
-    assert rows[f"E{p[4]}"][13:] == ["", *[""] * 6, "0", "20.0", "0.0"]
+    assert rows[f"E{p[0]}"] == ["wochenstunden", f"E{p[0]}", *[""] * 11, "20.0", *[""] * 6, "0", "40.0", "20.0",
+                                *[""] * 4]
+    assert rows[f"E{p[1]}"][13:] == ["30.0", *[""] * 6, "2", "40.0", "30.0", *[""] * 4]
+    assert rows[f"E{p[4]}"][13:] == ["", *[""] * 6, "0", "20.0", "0.0", *[""] * 4]
     assert f"E{p[2]}" not in rows and f"E{p[3]}" not in rows
     hours = {p["id"]: p["weeklyHours"] for p in result["people"]}
     assert all(r[13] == str(hours[pid]) for pid, r in rows.items() if pid != f"E{p[4]}")
@@ -745,13 +746,13 @@ def test_report_names_ids_only(source, folder, imported, tmp_path):
     assert lines[0] == "pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;" \
         "tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;" \
         "wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;" \
-        "wochenstunden_calcbase"
+        "wochenstunden_calcbase;feld;status;wert_export;wert_korrektur"
     rows = [line.split(";") for line in lines[1:]]
     assert {r[0] for r in rows} == {"bedarf", "bereich", "person", "schicht", "verworfen", "wochenstunden"}
-    assert all(len(r) == 23 for r in rows)
+    assert all(len(r) == 27 for r in rows)
     assert all(r[4].isdigit() for r in rows if r[0] != "wochenstunden")
-    assert all(r[13:] == [""] * 10 for r in rows if r[0] not in ("person", "verworfen", "wochenstunden"))
-    assert all(r[18:] == [""] * 5 for r in rows if r[0] == "person")
+    assert all(r[13:] == [""] * 14 for r in rows if r[0] not in ("person", "verworfen", "wochenstunden"))
+    assert all(r[18:] == [""] * 9 for r in rows if r[0] == "person")
     # Weekly hours: one row per person counted in the summary line, the value written is the CALCBASE value.
     hours = {p["id"]: p["weeklyHours"] for p in imported[0]["people"]}
     weekly = [r for r in rows if r[0] == "wochenstunden"]
@@ -836,8 +837,8 @@ def test_shifts_from_history(source, folder, imported, tmp_path):
     rows = {(r[1], r[3]): r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
             if r[0] == "schicht"}
     assert rows[("E9101", night["code"])] == ["schicht", "E9101", "AN", night["code"], "0", "", "auf_anfrage", "", "",
-                                              "", "", "", ""] + [""] * 10
-    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 10
+                                              "", "", "", ""] + [""] * 14
+    assert rows[("E9101", day["code"])][4:] == ["6", "", "", "", "", "", "", "", ""] + [""] * 14
     assert rows[("E9102", night["code"])][6] == "sp5"
     assert rows[("E9103", night["code"])][6] == "zu_kurze_historie"
     text = report.read_text(encoding="utf-8")
@@ -949,7 +950,7 @@ def test_demand_from_history_is_the_known_staffing(folder, tmp_path):
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()[1:]]
     demand = {r[7]: r for r in rows if r[0] == "bedarf" and r[2] == "HX"}
     assert list(demand) == [*CODES, "HOL"]
-    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 10
+    assert demand["HOL"] == ["bedarf", "", "HX", "", "9", "", "", "HOL", "2", "0", "3", "", "2"] + [""] * 14
     assert sum(int(r[4]) for r in demand.values()) == counted
     assert sum(int(r[10]) for r in demand.values()) == left_out
     # Duties on a holiday count for HOL only, not for their weekday (2026-12-08 is a Tuesday).
@@ -978,9 +979,9 @@ def test_shifts_without_area_are_reported_with_duties_and_hours(folder, tmp_path
         "Schichten ohne Bereich: 2 Schichten, 13 Dienste, 116.0 Stunden in den 1 Monaten davor"]
     rows = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
     assert [r for r in rows if r[0] in ("ignoriert", "nicht_zugeordnet")] == [
-        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 10,
-        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 10]
-    assert all(len(r) == 23 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
+        ["ignoriert", "", "", "H6", "10", "", "", "", "", "", "", "80.0", ""] + [""] * 14,
+        ["nicht_zugeordnet", "", "", "H5", "3", "", "", "", "", "", "", "36.0", ""] + [""] * 14]
+    assert all(len(r) == 27 for r in rows) and rows[0][11:13] == ["stunden_historie", "spitze_historie_max"]
     assert result == before  # the dataset does not know these duties
 
     none, warnings, _ = hx.export("none.json", "--history-months", "0", "--demand", "sp5")
@@ -1056,8 +1057,8 @@ def test_dropped_history_duties_are_counted_by_reason(folder, tmp_path):
     assert sum(int(r[4]) for r in rows if r[18] == "mitarbeiter_nicht_uebernommen") == now[0]
     assert sum(int(r[4]) for r in rows if not r[18].startswith("mitarbeiter_")) == 17
     rows = [r for r in rows if r[3] in ("", "LZ", "TZ", *HX_SHIFTS)]
-    assert all(len(r) == 23 and r[1] == r[2] == "" and r[5:11] == [""] * 6 and r[12:18] == [""] * 6
-               and r[20:] == [""] * 3 for r in rows)
+    assert all(len(r) == 27 and r[1] == r[2] == "" and r[5:11] == [""] * 6 and r[12:18] == [""] * 6
+               and r[20:] == [""] * 7 for r in rows)
     assert sorted((r[3], r[18], r[19], r[4], r[11]) for r in rows) == [
         ("", "unbekannte_schicht", "999", "1", "0.0"),
         ("H1", "mitarbeiter_nicht_uebernommen", str(hx.shift["H1"]), "3", "36.0"),
@@ -1365,7 +1366,7 @@ def test_shift_mix_is_the_share_of_the_counted_duties(folder, tmp_path):
             if r[0] == "person"}
     assert set(rows) == set(people)
     assert rows["E9201"] == ["person", "E9201", "", "", "10", *[""] * 8, "40.0", "HX", "DAY 0.900, NIGHT 0.100",
-                             "HX 1.000", "1", *[""] * 5]
+                             "HX 1.000", "1", *[""] * 9]
     assert rows["E9203"][13:18] == ["40.0", "HX HY", "EARLY 0.400, DAY 0.600", "HX 0.600, HY 0.400", "0"]
     assert rows["E9204"][4] == "9" and rows["E9204"][15:17] == ["", ""]
     assert rows["E9205"][4] == "9"  # the duty on the day of absence does not count
@@ -1400,3 +1401,164 @@ def test_shift_mix_shares_are_rounded_to_sum_to_one():
     assert _shares(Counter(A=2, B=1, C=1, D=1, E=1, F=1), list("ABCDEF")) == \
         {"A": 0.285, "B": 0.143, "C": 0.143, "D": 0.143, "E": 0.143, "F": 0.143}
     assert _shares(Counter(X=5), ["A"]) == {}
+
+
+def _corrections(tmp_path, people, header=None):
+    path = tmp_path / "korrekturen.json"
+    path.write_text(json.dumps({"format": "dispofold/corrections", "version": 1, "people": people, **(header or {})}),
+                    encoding="utf-8")
+    return path
+
+
+def _korrektur_rows(report):
+    return [r for r in (line.split(";") for line in report.read_text(encoding="utf-8").splitlines())
+            if r[0] == "korrektur"]
+
+
+def test_corrections_replace_present_fields_and_leave_absent_ones(folder, tmp_path):
+    hx = _mix_area(folder, tmp_path)
+    plain, _, _ = hx.export("plain.json")
+    h1, h4 = f"S{hx.shift['H1']}", f"S{hx.shift['H4']}"
+    rules = [{"weekdays": [1, 2], "latestEnd": "16:00", "earliestStart": None, "noNights": True, "note": "Kind"}]
+    path = _corrections(tmp_path, {
+        "E9201": {"note": "frei", "weeklyHours": 30, "hoursAccount": -4.5, "compRestBalance": 2,
+                  "familyRules": rules, "entryDate": "2020-02-01", "exitDate": "2030-12-31", "shiftMix": None,
+                  "restrictions": [{"shiftId": h1, "category": None, "weekday": 0, "kind": "NEVER"},
+                                   {"category": "NIGHT", "weekday": 6, "kind": "ON_REQUEST",
+                                    "validFrom": "2027-01-01", "validTo": None}]},
+        "E9202": {"areaIds": ["HX", "HY"], "shiftMix": {"categories": {"DAY": 0.5, "LATE": 0.5},
+                                                         "areas": {"HX": 0.75, "HY": 0.25}}},
+        "E9203": {"restrictions": []},
+    })
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("dataset.json", "--corrections", str(path), "--report", str(report))
+    people, before = {p["id"]: p for p in result["people"]}, {p["id"]: p for p in plain["people"]}
+    mixed = before["E9201"].pop("shiftMix")
+    assert mixed and people["E9201"] == {**before["E9201"], "weeklyHours": 30.0, "hoursAccount": -4.5,
+                                         "compRestBalance": 2, "familyRules": rules, "entryDate": "2020-02-01",
+                                         "exitDate": "2030-12-31"}
+    assert people["E9202"] == {**before["E9202"], "areaIds": ["HX", "HY"],
+                               "shiftMix": {"categories": {"DAY": 0.5, "LATE": 0.5}, "areas": {"HX": 0.75, "HY": 0.25}}}
+    assert all(people[p] == before[p] for p in people if p not in ("E9201", "E9202"))
+    assert {"personId": "E9201", "shiftId": h4, "weekday": 3, "kind": "ON_REQUEST"} in plain["restrictions"]
+    assert [r for r in result["restrictions"] if r["personId"] == "E9201"] == [
+        {"personId": "E9201", "shiftId": h1, "category": None, "weekday": 0, "kind": "NEVER"},
+        {"personId": "E9201", "category": "NIGHT", "weekday": 6, "kind": "ON_REQUEST", "validFrom": "2027-01-01",
+         "validTo": None}]
+    assert not [r for r in result["restrictions"] if r["personId"] == "E9203"]
+    assert [r for r in result["restrictions"] if r["personId"] not in ("E9201", "E9203")] == \
+        [r for r in plain["restrictions"] if r["personId"] not in ("E9201", "E9203")]
+    assert {k: v for k, v in result.items() if k not in ("people", "restrictions")} == \
+        {k: v for k, v in plain.items() if k not in ("people", "restrictions")}
+    assert "Korrekturen: 3 Mitarbeiter korrigiert, 11 Felder angewendet, 0 Felder übersprungen" in warnings
+
+    rows = _korrektur_rows(report)
+    assert all(len(r) == 27 and r[2:18] == [""] * 16 and r[18] == "" and r[19:23] == [""] * 4 for r in rows)
+    assert [(r[1], *r[23:]) for r in rows] == [
+        ("E9201", "weeklyHours", "angewendet", "40.0", "30"),
+        ("E9201", "hoursAccount", "angewendet", "0.0", "-4.5"),
+        ("E9201", "compRestBalance", "angewendet", "0", "2"),
+        ("E9201", "familyRules", "angewendet", "0 Regeln", "1 Regeln"),
+        ("E9201", "entryDate", "angewendet", "2015-01-01", "2020-02-01"),
+        ("E9201", "exitDate", "angewendet", "null", "2030-12-31"),
+        ("E9201", "shiftMix", "angewendet", "categories DAY 0.900, NIGHT 0.100 | areas HX 1.000", "null"),
+        ("E9201", "restrictions", "angewendet", "1 Einschränkungen", "2 Einschränkungen"),
+        ("E9202", "areaIds", "angewendet", "HX", "HX HY"),
+        ("E9202", "shiftMix", "angewendet", "categories EARLY 0.300, DAY 0.700 | areas HX 1.000",
+         "categories DAY 0.500, LATE 0.500 | areas HX 0.750, HY 0.250"),
+        ("E9203", "restrictions", "angewendet", "0 Einschränkungen", "0 Einschränkungen")]
+    assert "Kind" not in report.read_text(encoding="utf-8") and "frei" not in report.read_text(encoding="utf-8")
+
+
+def test_corrections_with_problems_are_skipped_and_the_export_goes_on(folder, tmp_path):
+    hx = _mix_area(folder, tmp_path)
+    plain, _, _ = hx.export("plain.json")
+    path = _corrections(tmp_path, {
+        "E1": {"weeklyHours": 20.0, "note": "Notiz Quokka"},
+        "Maier": {"weeklyHours": 20.0},
+        "E9201": {"weeklyHours": 0, "lastName": "Neu", "colour": "rot", "compRestBalance": 1.5,
+                  "hoursAccount": True},
+        "E9202": {"restrictions": [{"shiftId": "S99999", "weekday": 0, "kind": "NEVER"}],
+                  "entryDate": "2027-02-30"},
+        "E9203": {"areaIds": ["HX"]},  # the exported mix has a share in HY
+        "E9204": {"areaIds": ["HX", "QQ"], "shiftMix": {"categories": {"DAY": 0.5}},
+                  "exitDate": "2010-01-01"},
+        "E9205": {"restrictions": [{"personId": "E9205", "shiftId": f"S{hx.shift['H1']}", "weekday": 0,
+                                    "kind": "NEVER"}]},
+        "E9206": {"restrictions": [{"shiftId": f"S{hx.shift['H1']}", "category": "DAY", "weekday": 0,
+                                    "kind": "NEVER"}], "shiftMix": {"areas": {"HY": 1.0}}},
+    })
+    report = tmp_path / "bericht.csv"
+    result, warnings, proc = hx.export("dataset.json", "--corrections", str(path), "--report", str(report))
+    assert result == plain
+    rows = [(r[1], r[23], r[24], r[18]) for r in _korrektur_rows(report)]
+    assert rows == [
+        ("", "weeklyHours", "person_fehlt", "keine Mitarbeiter-Id (E und SP5-Id)"),
+        ("E1", "weeklyHours", "person_fehlt", "Mitarbeiter nicht exportiert"),
+        ("E9201", "weeklyHours", "ungueltig", "muss eine Zahl größer 0 sein"),
+        ("E9201", "hoursAccount", "ungueltig", "muss eine Zahl sein"),
+        ("E9201", "compRestBalance", "ungueltig", "muss eine ganze Zahl sein"),
+        ("E9201", "lastName", "ungueltig", "nicht korrigierbar"),
+        ("E9201", "", "ungueltig", "unbekanntes Feld"),
+        ("E9202", "entryDate", "ungueltig", "Datum nicht im Format JJJJ-MM-TT"),
+        ("E9202", "restrictions", "ungueltig", "unbekannte Schicht-Id"),
+        ("E9203", "areaIds", "ungueltig",
+         "Schichtmix hat Anteile in einem Bereich, der nicht mehr in areaIds steht (shiftMix mitkorrigieren)"),
+        ("E9204", "areaIds", "ungueltig", "unbekannte Bereichs-Id"),
+        ("E9204", "exitDate", "ungueltig", "Austritt vor Eintritt"),
+        ("E9204", "shiftMix", "ungueltig", "Anteile ergeben nicht 1"),
+        ("E9205", "restrictions", "ungueltig",
+         "Einschränkung mit unbekanntem Schlüssel (personId wird nicht angegeben)"),
+        ("E9206", "shiftMix", "ungueltig", "Bereichsanteil für einen Bereich, der nicht in areaIds steht"),
+        ("E9206", "restrictions", "ungueltig", "Einschränkung braucht genau eines von shiftId und category")]
+    assert all(r[25] != "" and r[26] == "" for r in _korrektur_rows(report)
+               if r[24] == "ungueltig" and r[23] not in ("", "lastName"))
+    assert "Korrekturen: 0 Mitarbeiter korrigiert, 0 Felder angewendet, 16 Felder übersprungen" in warnings
+    assert "Korrektur für E1 übersprungen: Mitarbeiter nicht exportiert" in warnings
+    assert "Korrektur E9202 restrictions übersprungen: unbekannte Schicht-Id" in warnings
+    for text in ("Maier", "Neu", "rot", "colour", "Quokka"):
+        assert text not in proc.stderr and text not in report.read_text(encoding="utf-8")
+
+
+def test_both_dates_and_areas_with_mix_are_checked_against_the_corrected_values(folder, tmp_path):
+    hx = _mix_area(folder, tmp_path)
+    path = _corrections(tmp_path, {
+        "E9201": {"entryDate": "2031-01-01", "exitDate": "2032-01-01"},  # entry after the exported exit (none)
+        "E9202": {"exitDate": "2028-01-01"},
+        "E9203": {"areaIds": ["HX"], "shiftMix": {"categories": {"DAY": 1.0}, "areas": {"HX": 1.0}}},
+    })
+    hx.add("5EMPL", ID=9299, NAME="X", FIRSTNAME="Y", SHORTNAME="H9299", NUMBER="9299", POSITION=9299, HIDE=0,
+           WORKDAYS="1 1 1 1 1 0 0 0", CALCBASE=1, HRSDAY=8.0, HRSWEEK=40.0, HRSMONTH=0.0, HRSTOTAL=0.0)
+    result, warnings, _ = hx.export("dataset.json", "--corrections", str(path))
+    people = {p["id"]: p for p in result["people"]}
+    assert (people["E9201"]["entryDate"], people["E9201"]["exitDate"]) == ("2031-01-01", "2032-01-01")
+    assert people["E9202"]["exitDate"] == "2028-01-01"
+    assert people["E9203"]["areaIds"] == ["HX"] and people["E9203"]["shiftMix"]["areas"] == {"HX": 1.0}
+    assert "Korrekturen: 3 Mitarbeiter korrigiert, 5 Felder angewendet, 0 Felder übersprungen" in warnings
+
+
+@pytest.mark.parametrize("header, message", [
+    ({"format": "dispofold/dataset"}, "unbekanntes Format"),
+    ({"version": 2}, "Version nicht unterstützt"),
+    ({"version": "1"}, "Version nicht unterstützt"),
+    ({"people": []}, "'people' muss ein Objekt sein"),
+])
+def test_corrections_file_with_unknown_format_or_version_stops(folder, tmp_path, header, message):
+    path = _corrections(tmp_path, {}, header)
+    proc = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--corrections", str(path))
+    assert proc.returncode == 1 and message in proc.stderr and not (tmp_path / "x.json").exists()
+    path.write_text("{", encoding="utf-8")
+    proc = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--corrections", str(path))
+    assert proc.returncode == 1 and "nicht lesbar" in proc.stderr
+    same = run(folder, MONTH, MAPPING, path, "--corrections", str(path))
+    assert same.returncode == 1 and "Korrekturdatei" in same.stderr
+
+
+def test_empty_corrections_leave_the_dataset_unchanged(folder, exported, tmp_path):
+    path = _corrections(tmp_path, {})
+    _, warnings, proc = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
+                               "--corrections", str(path))
+    assert (tmp_path / "dataset.json").read_bytes() == json.dumps(exported[0], ensure_ascii=False, indent=1) \
+        .encode("utf-8") + b"\n"
+    assert "Korrekturen: 0 Mitarbeiter korrigiert, 0 Felder angewendet, 0 Felder übersprungen" in warnings
+    assert not [w for w in exported[1] if w.startswith("Korrektur")]
