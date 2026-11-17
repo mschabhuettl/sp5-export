@@ -186,7 +186,7 @@ class _Check:
             sid, category = r.get("shiftId"), r.get("category")
             if (sid is None) == (category is None):
                 return "Einschränkung braucht genau eines von shiftId und category"
-            if sid is not None and sid not in self.shift_ids:
+            if sid is not None and (not isinstance(sid, str) or sid not in self.shift_ids):
                 return "unbekannte Schicht-Id"
             if category is not None and category not in CATEGORIES:
                 return "unbekannte Kategorie"

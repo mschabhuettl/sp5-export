@@ -64,7 +64,8 @@ def main(argv: list[str] | None = None) -> int:
             return _fail("Ausgabe- und Berichtsdatei dürfen nicht im SP5-Ordner liegen")
     if report == out:
         return _fail("Ausgabe- und Berichtsdatei müssen verschieden sein")
-    if args.corrections and Path(args.corrections).resolve() in (out, report):
+    written = [p for path in (out, report) if path is not None for p in (path, path.with_name(path.name + ".tmp"))]
+    if args.corrections and Path(args.corrections).resolve() in written:
         return _fail("Ausgabe- und Berichtsdatei dürfen nicht die Korrekturdatei sein")
     try:
         mapping = load_mapping(args.mapping)

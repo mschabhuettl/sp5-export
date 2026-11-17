@@ -1487,6 +1487,7 @@ def test_corrections_with_problems_are_skipped_and_the_export_goes_on(folder, tm
                                     "kind": "NEVER"}]},
         "E9206": {"restrictions": [{"shiftId": f"S{hx.shift['H1']}", "category": "DAY", "weekday": 0,
                                     "kind": "NEVER"}], "shiftMix": {"areas": {"HY": 1.0}}},
+        "E9207": {"restrictions": [{"shiftId": [], "weekday": 0, "kind": "NEVER"}]},
     })
     report = tmp_path / "bericht.csv"
     result, warnings, proc = hx.export("dataset.json", "--corrections", str(path), "--report", str(report))
@@ -1510,10 +1511,11 @@ def test_corrections_with_problems_are_skipped_and_the_export_goes_on(folder, tm
         ("E9205", "restrictions", "ungueltig",
          "Einschränkung mit unbekanntem Schlüssel (personId wird nicht angegeben)"),
         ("E9206", "shiftMix", "ungueltig", "Bereichsanteil für einen Bereich, der nicht in areaIds steht"),
-        ("E9206", "restrictions", "ungueltig", "Einschränkung braucht genau eines von shiftId und category")]
+        ("E9206", "restrictions", "ungueltig", "Einschränkung braucht genau eines von shiftId und category"),
+        ("E9207", "restrictions", "ungueltig", "unbekannte Schicht-Id")]
     assert all(r[25] != "" and r[26] == "" for r in _korrektur_rows(report)
                if r[24] == "ungueltig" and r[23] not in ("", "lastName"))
-    assert "Korrekturen: 0 Mitarbeiter korrigiert, 0 Felder angewendet, 16 Felder übersprungen" in warnings
+    assert "Korrekturen: 0 Mitarbeiter korrigiert, 0 Felder angewendet, 17 Felder übersprungen" in warnings
     assert "Korrektur für E1 übersprungen: Mitarbeiter nicht exportiert" in warnings
     assert "Korrektur E9202 restrictions übersprungen: unbekannte Schicht-Id" in warnings
     for text in ("Maier", "Neu", "rot", "colour", "Quokka"):
@@ -1550,8 +1552,15 @@ def test_corrections_file_with_unknown_format_or_version_stops(folder, tmp_path,
     path.write_text("{", encoding="utf-8")
     proc = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--corrections", str(path))
     assert proc.returncode == 1 and "nicht lesbar" in proc.stderr
-    same = run(folder, MONTH, MAPPING, path, "--corrections", str(path))
-    assert same.returncode == 1 and "Korrekturdatei" in same.stderr
+    # Not the output or the report, nor their temporary files (name + ".tmp").
+    tmp = tmp_path / "y.json.tmp"
+    tmp.write_text("{", encoding="utf-8")
+    for corrections, out, options in ((path, path, ()), (tmp, tmp_path / "y.json", ()),
+                                      (path, tmp_path / "z.json", ("--report", str(path))),
+                                      (tmp, tmp_path / "z.json", ("--report", str(tmp_path / "y.json")))):
+        same = run(folder, MONTH, MAPPING, out, "--corrections", str(corrections), *options)
+        assert same.returncode == 1 and "nicht die Korrekturdatei" in same.stderr
+        assert corrections.read_text(encoding="utf-8") == "{"
 
 
 def test_empty_corrections_leave_the_dataset_unchanged(folder, exported, tmp_path):
