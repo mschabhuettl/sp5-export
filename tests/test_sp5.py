@@ -1766,14 +1766,15 @@ def _days(month, *nth):
 def _recent_area(folder, tmp_path):
     """_HistoryArea with a second area HY (shifts H5 and H6) that 9201..9206 also hold, six months of history
     (July to December 2026). 9201, 9204, 9205 and 9206 worked HY in July and August and only HX after that; 9206
-    entered in October. 9202 worked both in July to September and has no duty after that (a long absence); 9203
-    has two active months only. 9204 has an SP5 restriction "never" on H6, 9205 one on Wednesdays only."""
+    entered in October. 9202 worked both in July to September and has no duty after that (a long absence), 9207
+    worked HY in July and August and HX in November and December (an absence in between); 9203 has two active
+    months only. 9204 has an SP5 restriction "never" on H6, 9205 one on Wednesdays only."""
     hx = _HistoryArea(folder, tmp_path)
     hx.mapping["areas"].append({"id": "HY", "name": "Zweiter Bereich", "color": "#777777"})
     hx.mapping["shifts"].insert(0, {"match": "H[56]", "areaId": "HY"})
     hx.add("5GROUP", ID=951, NAME="Team Zwei", SHORTNAME="GZ", POSITION=951, HIDE=0, SUPERID=0)
     hx.mapping["groups"].append({"match": "Team Zwei", "areaIds": ["HX", "HY"]})
-    for eid in range(9201, 9207):
+    for eid in range(9201, 9208):
         hx.add("5GRASG", EMPLOYEEID=eid, GROUPID=951)
     for eid in (9201, 9204, 9205, 9206):
         for m in ("2026-07", "2026-08"):
@@ -1784,6 +1785,8 @@ def _recent_area(folder, tmp_path):
     for m in ("2026-07", "2026-08", "2026-09"):
         hx.duty(9202, "H1", _days(m, 1, 2, 3))
     hx.duty(9202, "H6", _days("2026-07", 10, 11))
+    hx.duty(9207, "H6", _days("2026-07", 1, 2) + _days("2026-08", 1, 2))
+    hx.duty(9207, "H1", _days("2026-11", 1, 2) + _days("2026-12", 1, 2))
     hx.duty(9203, "H6", _days("2026-11", 1, 2, 3))
     hx.duty(9203, "H1", _days("2026-12", 1, 2, 3))
     for k in range(7):
@@ -1809,12 +1812,13 @@ def test_areas_no_longer_worked_become_on_request(folder, tmp_path):
     assert people["E9201"]["shiftMix"] == {"categories": {"DAY": 0.75, "NIGHT": 0.25}, "areas": {"HX": 1.0}}
     # The last three active months of 9202 are July to September (October to December without a duty).
     assert restrictions("E9202") == [] and set(people["E9202"]["shiftMix"]["areas"]) == {"HX", "HY"}
+    assert restrictions("E9207") == []  # August, November and December
     assert restrictions("E9203") == [] and restrictions("E9206") == []  # not judged
     assert set(people["E9206"]["shiftMix"]["areas"]) == {"HX", "HY"}
     # The SP5 "never" for every day stays and is not doubled; one for a single weekday stays next to it.
     assert restrictions("E9204") == [(h5, 0, "ON_REQUEST"), (h6, 0, "NEVER")]
     assert restrictions("E9205") == [(h5, 0, "ON_REQUEST"), (h6, 0, "ON_REQUEST"), (h6, 3, "NEVER")]
-    skipped = len(people) - 4  # all but 9201, 9202, 9204 and 9205
+    skipped = len(people) - 5  # all but 9201, 9202, 9204, 9205 and 9207
     assert "Bereiche nicht mehr gearbeitet (kein Dienst in den letzten 3 Monaten mit Diensten): 3 Mitarbeiter, 3 " \
         "Paare aus Mitarbeiter und Bereich, 5 Einschränkungen 'nur auf Anfrage' ergänzt; " \
         f"{skipped} Mitarbeiter mit weniger als 3 Monaten mit Diensten oder Eintritt ab 2026-10-01 nicht bewertet" \
