@@ -46,7 +46,8 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | `--shifts-from-history N` | Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "nur auf Anfrage" (siehe unten) |
 | `--mix-min-duties N` | Schichtmix nur für Personen mit mindestens N Diensten in der Historie, Standard 10 (siehe unten) |
 | `--no-shift-mix` | keinen Schichtmix schreiben; der Datensatz ist dann derselbe wie vor dieser Option |
-| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen, verworfene Dienste der Historie je Grund und Schicht, abweichende Wochenstunden (siehe unten) |
+| `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen, verworfene Dienste der Historie je Grund und Schicht, abweichende Wochenstunden, Korrekturen (siehe unten) |
+| `--corrections DATEI` | Korrekturdatei mit von Hand korrigierten Stammdaten einzelner Personen, zuletzt angewendet (siehe [Korrekturdatei](#korrekturdatei)) |
 
 Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
 gespeicherten Plan des Monats davor; ist der noch nicht geplant, beginnt der Monat ohne Vormonatsdienste.
@@ -72,15 +73,19 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase
-bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;
-bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;
-person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;
-nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;
-verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;
-wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase;feld;status;wert_export;wert_korrektur
+bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;;;;;
+bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;;;;;
+person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;;;;;
+verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;;;;;
+wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0;;;;
+korrektur;E12;;;;;;;;;;;;;;;;;;;;;;weeklyHours;angewendet;40.0;30.0
 ```
+
+Der Bericht hat 27 Spalten. Wer ihn nach Spaltennummer einliest: die Spalten `feld` bis `wert_korrektur` sind
+neu und stehen am Ende.
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
 (`bereich_aus_gruppen` ja oder nein); Zeilen `schicht` je Person und Schicht ihrer Bereiche (siehe
@@ -92,7 +97,8 @@ Person mit den angehängten Spalten `wochenstunden` bis `auf_anfrage` (siehe
 [Schichtmix aus der Historie](#schichtmix-aus-der-historie)); Zeilen `verworfen` je Grund und Schicht mit
 `grund` und `sp5_schicht` (siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie)); Zeilen
 `wochenstunden` je Person, bei der `HRSWEEK` vom Wert nach `CALCBASE` abweicht (siehe
-[Wochenstunden nach CALCBASE](#wochenstunden-nach-calcbase)); die übrigen Zeilen lassen diese Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
+[Wochenstunden nach CALCBASE](#wochenstunden-nach-calcbase)); Zeilen `korrektur` je Feld der Korrekturdatei
+(siehe [Korrekturdatei](#korrekturdatei)); die übrigen Zeilen lassen diese Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
 Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
@@ -186,6 +192,47 @@ Verwendet wird immer der Wert nach `CALCBASE`, so wie SP5 das Soll rechnet. Ergi
 Person nicht übernommen und `wochenstunden` bleibt leer; die Zeile gibt es trotzdem, damit die Zahl der Zeilen
 die Zahl der Warnung ist. Unter `CALCBASE` `0` sind Abweichungen normal; ist der Wert im Datensatz falsch, in SP5
 die Felder der Grundlage korrigieren (`HRSDAY` und `WORKDAYS`, `HRSMONTH` oder `HRSTOTAL`).
+
+### Korrekturdatei
+
+Stammdaten, die in SP5 falsch oder veraltet sind, lassen sich in einer Korrekturdatei von Hand korrigieren.
+`--corrections korrekturen.json` wendet sie bei jedem Export an, so gehen die Korrekturen bei einem neuen Export
+nicht verloren. Format:
+
+```json
+{"format": "dispofold/corrections", "version": 1, "people": {
+  "E12": {"note": "Freitext, wird nicht exportiert", "weeklyHours": 30.0, "areaIds": ["AN", "DR"],
+          "shiftMix": {"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"AN": 1.0}},
+          "restrictions": [{"shiftId": "S5", "category": null, "weekday": 0, "kind": "ON_REQUEST"}]}}}
+```
+
+- Schlüssel ist die Id im Datensatz (`E<SP5-Id>`).
+- Korrigierbar sind alle Personenfelder des Datenformats außer `id`, `externalId`, `firstName`, `lastName` und
+  `shortName`: `weeklyHours`, `areaIds`, `hoursAccount`, `compRestBalance`, `familyRules`, `entryDate`,
+  `exitDate`, `shiftMix`. Dazu `restrictions`, die Einschränkungen der Person.
+- Ein vorhandenes Feld ersetzt den exportierten Wert ganz, ein fehlendes lässt ihn, wie er ist.
+  `"shiftMix": null` entfernt den Mix. `restrictions` ersetzt alle Einschränkungen der Person (`[]` entfernt
+  alle); die Einträge haben kein `personId`, sonst dieselben Felder wie im Datenformat.
+- `note` ist nur für die Planung und kommt nie in den Datensatz.
+- Die Korrekturen werden zuletzt angewendet, nach allem, was aus SP5 und der Historie abgeleitet wird. Die Zeilen
+  `person` im Bericht zeigen deshalb die Werte vor der Korrektur.
+
+Geprüft wird wie beim Import in Dispofold: Typen, Wertebereiche (Zahl größer 0 für `weeklyHours`, ganze Zahl für
+`compRestBalance`, Datum `JJJJ-MM-TT`, Wochentag 0 bis 7), Anteile des Mix zwischen 0 und 1 mit Summe 1,
+bekannte Bereichs- und Schicht-Ids, Austritt nicht vor Eintritt, Bereichsanteile des Mix nur für Bereiche der
+Person. Entfernt eine Korrektur von `areaIds` einen Bereich, in dem der Mix einen Anteil hat, muss `shiftMix`
+mitkorrigiert werden, sonst wird `areaIds` übersprungen.
+
+Probleme halten den Export nicht an. Ein Feld mit ungültigem Wert oder unbekannter Id wird übersprungen
+(`restrictions` als Ganzes), ebenso alle Felder einer Person, die nicht exportiert wird; dazu je eine Warnung.
+Eine Zeile `Korrekturen: 3 Mitarbeiter korrigiert, 7 Felder angewendet, 1 Felder übersprungen` fasst zusammen.
+Mit `--report` steht je Feld eine Zeile `korrektur` mit `person`, `feld`, `status` (`angewendet`,
+`person_fehlt` oder `ungueltig`, dann mit dem Grund in `grund`), dem exportierten Wert (`wert_export`) und dem
+korrigierten (`wert_korrektur`) als kurzer Text; Regeln und Einschränkungen als Anzahl. Werte aus der Datei, die
+nicht gültig sind, und `note` stehen nie im Bericht oder in den Warnungen.
+
+Ein anderes `format`, eine `version` über 1 oder eine nicht lesbare Datei beenden den Export mit einem Fehler.
+Ohne `--corrections` ist der Datensatz derselbe wie ohne diese Option.
 
 ### Dienste auf ignorierten Schichten in den Planungsmonaten
 
@@ -449,6 +496,8 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Verworfene Dienste 2026-12-01..2026-12-31, <Grund>: ...` | Immer vorhanden (außer ohne Historie): verworfene Dienste der Historie je Grund; siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie). |
 | `Bedarf aus der Historie: Median ...` oder `Bedarf aus SP5 ...` | Immer vorhanden (außer ohne Historie): woher der Bedarf im Datensatz kommt. |
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
+| `Korrekturen: 3 Mitarbeiter korrigiert, 7 Felder angewendet, 1 Felder übersprungen` | Nur mit `--corrections`; siehe [Korrekturdatei](#korrekturdatei). |
+| `Korrektur E12 weeklyHours übersprungen: <Grund>` oder `Korrektur für E12 übersprungen: Mitarbeiter nicht exportiert` | Die Korrektur in der Datei berichtigen oder entfernen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
 | `... Einschränkungen nur für Feiertage nicht übernommen` | Das Datenformat kennt keine Feiertagseinschränkung. |
 | `... Einschränkungen ohne gültigen Grad (RESTRICT) als 'nie' übernommen` | Grad in SP5 prüfen. |
