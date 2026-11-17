@@ -45,6 +45,7 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | `--areas-from-history N` | ergänzt Bereiche, in denen jemand in der Historie mindestens N Dienste hatte (siehe unten) |
 | `--shifts-from-history N` | Schichten der eigenen Bereiche mit weniger als N Diensten in der Historie werden "nur auf Anfrage" (siehe unten) |
 | `--mix-min-duties N` | Schichtmix nur für Personen mit mindestens N Diensten in der Historie, Standard 10 (siehe unten) |
+| `--hidden-shifts-months N` | ausgeblendete Schichten (`HIDE`) übernehmen, wenn sie in den Planungsmonaten oder den N Monaten davor Dienste haben, Standard 3; 0 übernimmt keine (siehe [Ausgeblendete Schichten in Gebrauch](#ausgeblendete-schichten-in-gebrauch)) |
 | `--no-shift-mix` | keinen Schichtmix schreiben; der Datensatz ist dann derselbe wie vor dieser Option |
 | `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen, verworfene Dienste der Historie je Grund und Schicht, abweichende Wochenstunden, Korrekturen (siehe unten) |
 | `--corrections DATEI` | Korrekturdatei mit von Hand korrigierten Stammdaten einzelner Personen, ab Version 2 auch ausgeschlossenen Personen und Bedarf je Bereich, zuletzt angewendet (siehe [Korrekturdatei](#korrekturdatei)) |
@@ -73,19 +74,20 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase;feld;status;wert_export;wert_korrektur;dienste_nicht_uebernommen_gezaehlt
-bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;;;;;;23
-bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;;;;;;
-person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;;;;;;
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;;;;;;
-nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;;;;;;
-verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;;;;;;
-wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0;;;;;
-korrektur;E12;;;;;;;;;;;;;;;;;;;;;;weeklyHours;angewendet;40.0;30.0;
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase;feld;status;wert_export;wert_korrektur;dienste_nicht_uebernommen_gezaehlt;letzter_dienst
+bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;;;;;;23;
+bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;;;;;;;
+person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;;;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;;;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;;;;;;;
+verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;;;;;;;
+wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0;;;;;;
+korrektur;E12;;;;;;;;;;;;;;;;;;;;;;weeklyHours;angewendet;40.0;30.0;;
+ausgeblendet;;;A2;67;;;;;;;804.0;;;;;;;;2;;;;;uebernommen;;;;2026-12-31
 ```
 
-Der Bericht hat 28 Spalten. Wer ihn nach Spaltennummer einliest: die Spalten `feld` bis `wert_korrektur` und
-`dienste_nicht_uebernommen_gezaehlt` sind neu und stehen am Ende.
+Der Bericht hat 29 Spalten. Wer ihn nach Spaltennummer einliest: die Spalten `feld` bis `wert_korrektur`,
+`dienste_nicht_uebernommen_gezaehlt` und `letzter_dienst` sind neu und stehen am Ende.
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
 (`bereich_aus_gruppen` ja oder nein); Zeilen `schicht` je Person und Schicht ihrer Bereiche (siehe
@@ -98,7 +100,9 @@ Person mit den angehängten Spalten `wochenstunden` bis `auf_anfrage` (siehe
 `grund` und `sp5_schicht` (siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie)); Zeilen
 `wochenstunden` je Person, bei der `HRSWEEK` vom Wert nach `CALCBASE` abweicht (siehe
 [Wochenstunden nach CALCBASE](#wochenstunden-nach-calcbase)); Zeilen `korrektur` je Feld der Korrekturdatei
-(siehe [Korrekturdatei](#korrekturdatei)); die übrigen Zeilen lassen diese Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
+(siehe [Korrekturdatei](#korrekturdatei)); Zeilen `ausgeblendet` je ausgeblendeter Schicht mit Diensten (siehe
+[Ausgeblendete Schichten in Gebrauch](#ausgeblendete-schichten-in-gebrauch)); die übrigen Zeilen lassen diese
+Spalten leer. Die Datei enthält keine Namen, nur SP5-Ids und
 Kürzel, liegt neben dem Datensatz und ist wie dieser per `.gitignore` ausgeschlossen.
 
 Empfehlung für den ersten Lauf: `--areas-from-history 3 --report bericht.csv`, dann den Bericht mit der
@@ -125,6 +129,28 @@ die ausgeschlossener, ausgeblendeter oder nicht beschäftigter) und ohne Tage mi
 Stunden sind die Dienstzeit der Schicht je Dienst (häufigste Zeit der Wochentage). Ausgeblendete Schichten
 fehlen in der Meldung (siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie)). `nicht zugeordnet`: In der Zuordnung unter `shifts` eintragen, wenn Dispofold die Schicht
 planen soll. `ignoriert`: steht in `ignoreShifts`, also Absicht; nichts zu tun.
+
+### Ausgeblendete Schichten in Gebrauch
+
+In SP5 ausgeblendete Schichten (`HIDE`) werden manchmal weiter gearbeitet. Würde der Export sie weglassen,
+fehlten ihre Dienste in Historie, Bedarf und Schichtmix. Deshalb gilt eine ausgeblendete Schicht als in Gebrauch,
+wenn sie in den Planungsmonaten oder den N Monaten davor (`--hidden-shifts-months N`, Standard 3, höchstens
+so weit zurück wie die Historie) mindestens einen Dienst hat, gleich von wem (Istplan `5MASHI` ohne `TYPE` 1,
+Sonderdienste `5SPSHI`, Dienstzyklen). Eine Schicht in Gebrauch behandelt der Export genau wie eine sichtbare:
+Zuordnung, `ignoreShifts`, Bedarf, Historie, Mix, Einschränkungen und Dienste der Planungsmonate. Eine
+ausgeblendete Schicht ohne Dienste in diesem Zeitraum fällt weg wie bisher; mit `--hidden-shifts-months 0` fallen
+alle ausgeblendeten Schichten weg.
+
+Eine Zeile `Ausgeblendete Schichten: 2 übernommen, weil in Gebrauch (...), 3 nicht übernommen` nennt die Zahlen
+(nur wenn es ausgeblendete Schichten gibt). Mit `--report` steht je ausgeblendeter Schicht mit Diensten von Beginn
+der Historie bis Ende der Planungsmonate eine Zeile `ausgeblendet`: Kürzel (`schicht`), Zahl der Einträge
+(`dienste_historie`) und Stunden (`stunden_historie`) in diesem Zeitraum, SP5-Id (`sp5_schicht`), `status`
+`uebernommen` oder `verworfen` mit dem Grund in `grund` (`nicht_in_gebrauch`, oder der Grund einer sichtbaren
+Schicht wie `ignoriert`, `nicht_zugeordnet`, `zu_lang`), und das Datum des letzten Dienstes (`letzter_dienst`).
+
+Was tun: Ist eine übernommene Schicht wirklich nicht mehr in Verwendung (etwa nur noch alte Einträge in den
+letzten Monaten), sie in `ignoreShifts` aufnehmen oder in SP5 aufräumen. Wird sie noch gebraucht, sie in SP5
+wieder einblenden. Eine verworfene Schicht mit spätem `letzter_dienst` spricht für ein größeres N.
 
 ### Verworfene Dienste der Historie
 
@@ -155,6 +181,9 @@ Wie die Zahlen zusammenpassen:
   wenn der Tag keinen übernommenen Dienst und keine ganztägige Abwesenheit hat. Ausgeblendete und zu lange
   Schichten oder Schichten ohne Dienstzeit werden ebenso gezählt; je Person und Tag zählt aber nur ein Eintrag,
   und hat der Tag einen Dienst einer Schicht ohne Bereich, ist es dieser.
+- `Schicht ausgeblendet` und die Zeilen `verworfen` mit Grund `ausgeblendet` betreffen nur ausgeblendete
+  Schichten, die nicht in Gebrauch sind; die übrigen werden übernommen (siehe
+  [Ausgeblendete Schichten in Gebrauch](#ausgeblendete-schichten-in-gebrauch)).
 - `sonstige` sind die übrigen Einträge: Schicht-Id, die es in 5SHIFT nicht gibt (Stunden 0), Einträge an Tagen
   mit ganztägiger Abwesenheit, und Einträge neben einem anderen Eintrag desselben Tags (der Tag hat einen
   übernommenen Dienst, oder ein früherer Eintrag zählt schon).
@@ -475,7 +504,8 @@ Untergruppen (`5GROUP.SUPERID`) ohne eigene Regel erben die Regel der nächsten 
   welche Grundlage haben und bei wie vielen `HRSWEEK` abweicht (nur Zahlen). Id `E<SP5-Id>`, `externalId` ist die SP5-Id. `EMPSTART`/`EMPEND` werden
   `entryDate`/`exitDate`; Dispofold verplant Tage außerhalb nicht und rechnet das Soll anteilig. Mit genug
   Diensten in der Historie kommt der Schichtmix dazu (siehe [Schichtmix aus der Historie](#schichtmix-aus-der-historie)).
-- **Schichten:** Id `S<SP5-Id>`, Kürzel, Name und Farbe aus SP5. Bei Zeiten je Wochentag gilt die
+- **Schichten:** Id `S<SP5-Id>`, Kürzel, Name und Farbe aus SP5. Ausgeblendete nur, wenn sie in Gebrauch
+  sind (`--hidden-shifts-months`). Bei Zeiten je Wochentag gilt die
   häufigste Zeit. Schichten über 12 Stunden (die Standardregel `maxDutyHours` von Dispofold) werden nicht
   übernommen, weil Dispofold sonst den ganzen Import ablehnt. Ist `maxDutyHours` in Dispofold kleiner
   eingestellt, lehnt Dispofold längere Schichten trotzdem ab (Fehlercode `import.shiftTooLong`).
@@ -512,6 +542,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schicht ohne Dienstzeit ignoriert: ...` | Die Schicht hat in SP5 keine Zeit `HH:MM-HH:MM`. |
 | `Schicht 'X' (SP5-Id 3) hat je Wochentag andere Zeiten; verwendet wird ...` | Nur die häufigste Zeit wird übernommen. |
 | `Schicht 'X' (SP5-Id 3) dauert mehr als 12 Stunden (...) und wird nicht übernommen` | Zeiten in SP5 prüfen. |
+| `Ausgeblendete Schichten: 2 übernommen, weil in Gebrauch (...), 3 nicht übernommen` | Nur wenn es ausgeblendete Schichten gibt; welche: Zeilen `ausgeblendet` im Bericht (siehe [Ausgeblendete Schichten in Gebrauch](#ausgeblendete-schichten-in-gebrauch)). |
 | `Gruppe ohne Zuordnung: SP5-Id 7, Kürzel 'G7'` | Gruppe in `groups`, `ignoreGroups` oder `excludeGroups` aufnehmen. |
 | `17 Mitarbeiter nicht übernommen (Grund)` | Gründe: ausgeblendet, nicht beschäftigt im Monat, ausgeschlossene Gruppe, ohne Bereich. Zahl mit dem erwarteten Personalstand vergleichen. |
 | `Mitarbeiter E12 hat keine Wochenstunden (CALCBASE 1) und wird nicht übernommen` | Die Stunden der Grundlage in SP5 nachtragen (`HRSDAY` und `WORKDAYS`, `HRSWEEK`, `HRSMONTH` oder `HRSTOTAL`). |
