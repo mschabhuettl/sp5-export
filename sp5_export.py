@@ -14,7 +14,7 @@ import traceback
 from pathlib import Path
 
 from sp5export import corrections as corr
-from sp5export.sp5 import DEMAND_SOURCES, MIX_MIN_DUTIES, Sp5Error, import_sp5, load_mapping
+from sp5export.sp5 import DEMAND_SOURCES, HIDDEN_SHIFTS_MONTHS, MIX_MIN_DUTIES, Sp5Error, import_sp5, load_mapping
 from sp5export.timeutil import parse_month
 
 
@@ -41,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mix-min-duties", type=int, default=MIX_MIN_DUTIES, metavar="N",
                         help="Schichtmix nur für Mitarbeiter mit mindestens N Diensten in der Historie (Standard "
                              f"{MIX_MIN_DUTIES})")
+    parser.add_argument("--hidden-shifts-months", type=int, default=HIDDEN_SHIFTS_MONTHS, metavar="N",
+                        help="ausgeblendete Schichten (HIDE) übernehmen, wenn sie Dienste in den Planungsmonaten oder "
+                             f"den N Monaten davor haben (Standard {HIDDEN_SHIFTS_MONTHS}, 0: nie)")
     parser.add_argument("--no-shift-mix", action="store_true", help="keinen Schichtmix schreiben")
     parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter, "
                                          "Bedarf je Bereich und Tagestyp, eine Zeile je Mitarbeiter, verworfene "
@@ -83,7 +86,8 @@ def main(argv: list[str] | None = None) -> int:
         rows: list = []
         dataset, warnings = import_sp5(data, args.month, mapping, args.to, args.history_months,
                                        args.areas_from_history, rows, args.shifts_from_history, args.demand,
-                                       None if args.no_shift_mix else args.mix_min_duties, corrections)
+                                       None if args.no_shift_mix else args.mix_min_duties, corrections,
+                                       args.hidden_shifts_months)
     except Sp5Error as e:
         return _fail(str(e))
     except Exception as e:
@@ -103,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
                     "dienste_nicht_uebernommen", "stunden_historie", "spitze_historie_max", "wochenstunden",
                     "bereiche", "mix_kategorien", "mix_bereiche", "auf_anfrage", "grund", "sp5_schicht", "calcbase",
                     "hrsweek", "wochenstunden_calcbase", "feld", "status", "wert_export", "wert_korrektur",
-                    "dienste_nicht_uebernommen_gezaehlt"])
+                    "dienste_nicht_uebernommen_gezaehlt", "letzter_dienst"])
         w.writerows(rows)
 
     # Both files are written next to their target first and only then moved into place, so that a failed

@@ -39,8 +39,9 @@ DEFAULT_SHIFT_COLOR = "#E8E8E8"
 DEFAULT_ABSENCE_COLOR = "#CCCCCC"
 TIME_RANGE = re.compile(r"^\s*(\d{1,2}:\d\d)\s*-\s*(\d{1,2}:\d\d)\s*$")
 DEMAND_SOURCES = ("history", "sp5")
-REPORT_COLUMNS = 28
+REPORT_COLUMNS = 29
 MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
+HIDDEN_SHIFTS_MONTHS = 3  # default: a hidden shift with duties in this many months before the plan is taken
 MIX_MIN_DUTIES = 10  # default: people with fewer counted duties in the history window get no shift mix
 # Duties in the planning months on shifts in ignoreShifts become absences of this type (only when there are any).
 IGNORED_SHIFT_ABSENCE = {"code": "EXT", "name": "Sonstiger Dienst (ignorierte Schicht)", "reducesTarget": True,
@@ -221,8 +222,10 @@ def _mix_text(shares: dict[str, float] | None) -> str:
 class _Import:
     def __init__(self, folder: Path, months: list[str], mapping: dict, history_months: int = HISTORY_MONTHS,
                  areas_from_history: int | None = None, shifts_from_history: int | None = None,
-                 demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES):
+                 demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES,
+                 hidden_shifts_months: int = HIDDEN_SHIFTS_MONTHS):
         self.folder, self.mapping = folder, mapping
+        self.hidden_shifts_months = hidden_shifts_months
         self.mix_min_duties = mix_min_duties
         self.demand_source = demand
         self.month, self.months = months[0], months
@@ -286,9 +289,11 @@ class _Import:
             a, b = interval(*times.most_common(1)[0][0])
             return (b - a) / 60
 
+        hidden = {r.get("ID"): r for r in self.table("5SHIFT", required=True) if r.get("HIDE")}
+        in_use, use = self._hidden_in_use(hidden)
         for r in self.table("5SHIFT", required=True):
             sp5_id, short = r.get("ID"), _text(r.get("SHORTNAME"))
-            if r.get("HIDE"):
+            if r.get("HIDE") and sp5_id not in in_use:
                 self.dropped_shifts[sp5_id] = (short, "ausgeblendet", hours_of(times_of(r)))
                 continue
             if _any(ignore, short):
@@ -322,6 +327,39 @@ class _Import:
                 "color": bgr_to_hex(color) if isinstance(color, int) and color > 0 else DEFAULT_SHIFT_COLOR,
                 "unpopular": rule.get("unpopular", category == "NIGHT"),
             }
+        if not hidden:
+            return
+        for sp5_id, (n, last) in sorted(use.items()):
+            short = _text(hidden[sp5_id].get("SHORTNAME"))
+            hours = hours_of(times_of(hidden[sp5_id]))
+            taken = sp5_id in self.shift_by_sp5
+            why = "" if taken else "nicht_in_gebrauch" if sp5_id not in in_use else \
+                (self.without_area.get(sp5_id) or self.dropped_shifts[sp5_id])[1].replace(" ", "_")
+            self.report_rows.append(("ausgeblendet", "", "", short, n, *[""] * 6, f"{n * hours:.1f}", *[""] * 6,
+                                     why, sp5_id, *[""] * 4, "uebernommen" if taken else "verworfen", *[""] * 3,
+                                     last.isoformat()))
+        taken = sum(1 for sid in hidden if sid in self.shift_by_sp5)
+        self.warn(f"Ausgeblendete Schichten: {taken} übernommen, weil in Gebrauch (Dienste in den Planungsmonaten "
+                  f"oder den {self.hidden_shifts_months} Monaten davor), {len(hidden) - taken} nicht übernommen")
+
+    def _hidden_in_use(self, hidden: dict) -> tuple[set, dict]:
+        """The hidden shifts in use (with a duty of anyone in the planning months or the `hidden_shifts_months`
+        months before them, never with 0), and per hidden shift with duties from the start of the history window
+        to the end of the planning months: (entries, date of the last one)."""
+        if not hidden:
+            return set(), {}
+        recent = max(self.history_start, date.fromisoformat(add_months(self.month, -self.hidden_shifts_months)
+                                                            + "-01"))
+        in_use, use = set(), {}
+        for r in self._rows(self.history_start, self.last)[1]:
+            sid, d = r.get("SHIFTID"), _date(r.get("DATE"))
+            if sid not in hidden or d is None or not self.history_start <= d <= self.last:
+                continue
+            n, last = use.get(sid, (0, d))
+            use[sid] = (n + 1, max(last, d))
+            if self.hidden_shifts_months and d >= recent:
+                in_use.add(sid)
+        return in_use, use
 
     def people(self) -> None:
         own, parent, unmapped = {}, {}, []
@@ -839,24 +877,15 @@ class _Import:
         result, unknown, loose, first, rows_out = {}, 0, {}, {}, []
         people = self.person_by_sp5 if people is None else people
         warn = (lambda text: None) if quiet else self.warn
-        # 5SPSHI rows with a shift replace the duty of the day (sp5lib: _replaced_days, get_schedule), whatever
-        # their TYPE; sp5lib counts them as work time, only its staffing count leaves TYPE != 0 out, and the
-        # meaning of TYPE is not documented. Rows without a shift carry their own times and have no shift here.
-        special = [r for r in self.table("5SPSHI") if self._in_range(r, start, end)]
-        rows = [r for r in special if r.get("SHIFTID")]
-        replaced = {id(r) for r in rows}
-        other_type = sum(1 for r in rows if r.get("TYPE"))
+        special, rows = self._rows(start, end)
+        with_shift = [r for r in special if r.get("SHIFTID")]
+        replaced = {id(r) for r in with_shift}
+        other_type = sum(1 for r in with_shift if r.get("TYPE"))
         if other_type:
             warn(f"{other_type} Sonderdienste {start}..{end} (5SPSHI) mit TYPE ungleich 0 als Dienst übernommen")
-        without_shift = len(special) - len(rows)
+        without_shift = len(special) - len(with_shift)
         if without_shift:
             warn(f"{without_shift} Sonderdienste {start}..{end} (5SPSHI) ohne Schicht nicht übernommen")
-        # Then the actual plan (5MASHI TYPE 1 is the target plan), then cycle duties.
-        rows += [r for r in self.table("5MASHI") if r.get("TYPE") != 1]
-        rows += sp5calc.expand_cycle_assignments(
-            self.table("5CYASS", optional=True), cycles=self.table("5CYCLE", optional=True),
-            cycle_entries=self.table("5CYENT", optional=True),
-            cycle_exceptions=self.table("5CYEXC", optional=True), von=start, bis=end)
         for r in rows:
             d = _date(r.get("DATE"))
             person = people.get(r.get("EMPLOYEEID"))
@@ -896,6 +925,21 @@ class _Import:
             warn(f"{len(absent)} Dienste {start}..{end} an Tagen mit ganztägiger Abwesenheit nicht übernommen")
         return [(pid, d, s) for (pid, d), s in sorted(result.items(), key=lambda x: (x[0][0], x[0][1]))
                 if (pid, d) not in absent]
+
+    def _rows(self, start: date, end: date) -> tuple[list[dict], list[dict]]:
+        """The 5SPSHI rows in [start, end], and the duty rows in their order of precedence: 5SPSHI rows with a
+        shift, the actual plan 5MASHI (TYPE 1 is the target plan, left out), then the cycle duties of the range.
+        5SPSHI rows with a shift replace the duty of the day (sp5lib: _replaced_days, get_schedule), whatever
+        their TYPE; sp5lib counts them as work time, only its staffing count leaves TYPE != 0 out, and the
+        meaning of TYPE is not documented. Rows without a shift carry their own times and have no shift here."""
+        special = [r for r in self.table("5SPSHI") if self._in_range(r, start, end)]
+        rows = [r for r in special if r.get("SHIFTID")]
+        rows += [r for r in self.table("5MASHI") if r.get("TYPE") != 1]
+        rows += sp5calc.expand_cycle_assignments(
+            self.table("5CYASS", optional=True), cycles=self.table("5CYCLE", optional=True),
+            cycle_entries=self.table("5CYENT", optional=True),
+            cycle_exceptions=self.table("5CYEXC", optional=True), von=start, bis=end)
+        return special, rows
 
     @staticmethod
     def _in_range(row: dict, start: date, end: date) -> bool:
@@ -1129,7 +1173,8 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
                history_months: int = HISTORY_MONTHS, areas_from_history: int | None = None,
                report: list | None = None, shifts_from_history: int | None = None,
                demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES,
-               corrections: dict | None = None) -> tuple[dict, list[str]]:
+               corrections: dict | None = None,
+               hidden_shifts_months: int = HIDDEN_SHIFTS_MONTHS) -> tuple[dict, list[str]]:
     """Read the SP5 folder (never written) and return the dataset of the months `month`..`to` and the warnings.
     `report` (a list) receives the rows (check, person id, area, shift code, duties in the history window, area
     from groups, restriction, day type, peak demand from the history, peak demand from SP5, duties left out,
@@ -1158,6 +1203,8 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     for option in (areas_from_history, shifts_from_history):
         if option is not None and (option < 1 or not history_months):
             raise Sp5Error("Bereiche und Schichten aus Diensten brauchen eine Mindestzahl ab 1 und eine Historie")
+    if hidden_shifts_months < 0:
+        raise Sp5Error("Ausgeblendete Schichten: Monate müssen 0 oder mehr sein")
     if mix_min_duties is not None and mix_min_duties < 1:
         raise Sp5Error("Schichtmix: Mindestzahl der Dienste muss mindestens 1 sein")
     if demand not in DEMAND_SOURCES:
@@ -1169,7 +1216,7 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     if not folder.is_dir():
         raise Sp5Error(f"SP5-Ordner nicht gefunden: {folder}")
     job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history, demand,
-                  mix_min_duties)
+                  mix_min_duties, hidden_shifts_months)
     dataset = job.run()
     if corrections is not None:
         rows, warnings, (people, applied, skipped), summary = corr.apply(dataset, corrections)
