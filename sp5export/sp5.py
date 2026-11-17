@@ -345,15 +345,19 @@ class _Import:
     def _hidden_in_use(self, hidden: dict) -> tuple[set, dict]:
         """The hidden shifts in use (with a duty of anyone in the planning months or the `hidden_shifts_months`
         months before them, never with 0), and per hidden shift with duties from the start of the history window
-        to the end of the planning months: (entries, date of the last one)."""
+        to the end of the planning months: (duties, date of the last one). A duty is the first row of a person's
+        day in the order of `_rows`, so a row replaced by a deviation does not count."""
         if not hidden:
             return set(), {}
         recent = max(self.history_start, date.fromisoformat(add_months(self.month, -self.hidden_shifts_months)
                                                             + "-01"))
-        in_use, use = set(), {}
+        in_use, use, days = set(), {}, set()
         for r in self._rows(self.history_start, self.last)[1]:
             sid, d = r.get("SHIFTID"), _date(r.get("DATE"))
-            if sid not in hidden or d is None or not self.history_start <= d <= self.last:
+            if d is None or not self.history_start <= d <= self.last or (r.get("EMPLOYEEID"), d) in days:
+                continue
+            days.add((r.get("EMPLOYEEID"), d))  # the first row of a person's day is the duty (as in duties())
+            if sid not in hidden:
                 continue
             n, last = use.get(sid, (0, d))
             use[sid] = (n + 1, max(last, d))

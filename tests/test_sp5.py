@@ -1724,7 +1724,9 @@ def test_hidden_shifts_in_use_are_taken(folder, tmp_path):
     hx.duty(9203, "H4", [date(2026, 8, d) for d in range(3, 8)])  # used only long ago: dropped
     hx.duty(9204, "H5", [date(2027, 1, 12)])  # used only in the planning month: taken
     hx.duty(9205, "H6", DECEMBER[:2])  # in use, but ignored: stays ignored
-    # H2 has no duties at all: dropped, no row.
+    hx.duty(9206, "H2", DECEMBER[:1])  # replaced by a deviation: not in use
+    hx.add("5SPSHI", EMPLOYEEID=9206, SHIFTID=hx.shift["H1"], DATE=DECEMBER[0].isoformat(), TYPE=0)
+    # H2 has no duty that counts: dropped, no row.
     report = tmp_path / "bericht.csv"
     result, warnings, _ = hx.export("dataset.json", "--history-months", "6", "--report", str(report))
     codes = {s["code"]: s for s in result["shifts"]}
