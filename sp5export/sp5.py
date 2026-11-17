@@ -43,6 +43,7 @@ REPORT_COLUMNS = 29
 MAX_PERCENT = 90  # demand from the history: max = this nearest-rank percentile of the counts
 HIDDEN_SHIFTS_MONTHS = 3  # default: a hidden shift with duties in this many months before the plan is taken
 MIX_MIN_DUTIES = 10  # default: people with fewer counted duties in the history window get no shift mix
+RECENT_MONTHS = 3  # default: an area without duties in a person's last this many active months becomes on request
 # Duties in the planning months on shifts in ignoreShifts become absences of this type (only when there are any).
 IGNORED_SHIFT_ABSENCE = {"code": "EXT", "name": "Sonstiger Dienst (ignorierte Schicht)", "reducesTarget": True,
                          "chargesAccount": False, "compensatoryRest": False, "color": DEFAULT_ABSENCE_COLOR}
@@ -223,9 +224,10 @@ class _Import:
     def __init__(self, folder: Path, months: list[str], mapping: dict, history_months: int = HISTORY_MONTHS,
                  areas_from_history: int | None = None, shifts_from_history: int | None = None,
                  demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES,
-                 hidden_shifts_months: int = HIDDEN_SHIFTS_MONTHS):
+                 hidden_shifts_months: int = HIDDEN_SHIFTS_MONTHS, recent_months: int = RECENT_MONTHS):
         self.folder, self.mapping = folder, mapping
         self.hidden_shifts_months = hidden_shifts_months
+        self.recent_months = recent_months
         self.mix_min_duties = mix_min_duties
         self.demand_source = demand
         self.month, self.months = months[0], months
@@ -239,6 +241,9 @@ class _Import:
         # peak from SP5, duties left out, hours, ..., reason, SP5 shift id, CALCBASE, HRSWEEK, CALCBASE hours])
         self.report_rows: list[tuple] = []
         self.shift_counts: Counter = Counter()  # (person id, shift id) -> duties in the history window
+        self.area_months: defaultdict = defaultdict(Counter)  # (person id, area) -> month -> duties in the window
+        self.last_duty: dict = {}  # (person id, area) -> date of the last duty in the history window
+        self.past_areas: dict[str, set[str]] = {}  # person id -> areas no longer worked (areas_no_longer_worked)
         self._group_regular: dict = {}
         self._tables: dict[str, list[dict]] = {}
         self.employment: dict[str, tuple[date | None, date | None]] = {}
@@ -999,9 +1004,11 @@ class _Import:
         people = {**self.person_by_sp5, **candidates}
         counts: Counter = Counter()
         if self.history_months:
-            for pid, _, s in self.duties(self.history_start, self.first - timedelta(days=1), people, quiet=True):
+            for pid, d, s in self.duties(self.history_start, self.first - timedelta(days=1), people, quiet=True):
                 counts[(pid, s["areaId"])] += 1
                 self.shift_counts[(pid, s["id"])] += 1
+                self.area_months[(pid, s["areaId"])][d.isoformat()[:7]] += 1
+                self.last_duty[(pid, s["areaId"])] = d  # the duties come in date order per person
         areas = [a["id"] for a in self.mapping["areas"]]
         group = {p["id"]: set(p["areaIds"]) for p in people.values()}
         for p in people.values():
@@ -1088,20 +1095,63 @@ class _Import:
                       "ergänzt")
         return result
 
+    def areas_no_longer_worked(self, restrictions: list[dict]) -> list[dict]:
+        """With `recent_months` N: for each exported person, every area of their areaIds with duties in the history
+        window but none in the person's last N active months (months with a counted duty on any mapped shift, so a
+        long absence is skipped) becomes on request: a weekday-0 ON_REQUEST restriction for each of its shifts,
+        unless `restrictions` already has a weekday-0 one for the pair (ON_REQUEST or the stricter NEVER). People
+        with fewer than N active months or an entry in the last N months before the plan are not judged."""
+        n = self.recent_months
+        if not n or not self.history_months:
+            return []
+        start = date.fromisoformat(add_months(self.month, -n) + "-01")
+        active = defaultdict(set)
+        for (pid, _), months in self.area_months.items():
+            active[pid].update(months)
+        whole_week = {(r["personId"], r["shiftId"]) for r in restrictions if r["weekday"] == 0}
+        by_area = defaultdict(list)
+        for s in self.shift_by_sp5.values():
+            by_area[s["areaId"]].append(s)
+        result, skipped = [], 0
+        for p in self.person_by_sp5.values():
+            recent = sorted(active[p["id"]])[-n:]
+            entry = self.employment[p["id"]][0]
+            if len(recent) < n or (entry is not None and entry >= start):
+                skipped += 1
+                continue
+            for a in p["areaIds"]:
+                months = self.area_months.get((p["id"], a))
+                if not months or any(months[m] for m in recent):
+                    continue
+                self.past_areas.setdefault(p["id"], set()).add(a)
+                result += [{"personId": p["id"], "shiftId": s["id"], "weekday": 0, "kind": "ON_REQUEST"}
+                           for s in by_area[a] if (p["id"], s["id"]) not in whole_week]
+                self.report_rows.append(("nicht_mehr", p["id"], a, "", sum(months.values()), "", "auf_anfrage",
+                                         *[""] * 21, self.last_duty[(p["id"], a)].isoformat()))
+        pairs = sum(len(areas) for areas in self.past_areas.values())
+        self.warn(f"Bereiche nicht mehr gearbeitet (kein Dienst in den letzten {n} Monaten mit Diensten): "
+                  f"{len(self.past_areas)} Mitarbeiter, {pairs} Paare aus Mitarbeiter und Bereich, {len(result)} "
+                  f"Einschränkungen 'nur auf Anfrage' ergänzt; {skipped} Mitarbeiter mit weniger als {n} Monaten mit "
+                  f"Diensten oder Eintritt ab {start} nicht bewertet")
+        return result
+
     # ── shift mix ────────────────────────────────────────────
 
     def shift_mix(self) -> None:
         """The usual shares of each exported person's counted duties in the history window (`shift_counts`, the
         reading of the history) per shift category (the category of the dataset's shift) and per area. Only
         for people with at least `mix_min_duties` counted duties. The category shares take all counted duties,
-        the area shares only those in the person's areaIds (Dispofold accepts no other area)."""
+        the area shares only those in the person's areaIds (Dispofold accepts no other area); both leave out the
+        duties in the person's areas no longer worked (`past_areas`)."""
         by_id = {s["id"]: s for s in self.shift_by_sp5.values()}
         self.duty_totals: Counter = Counter()
         categories, areas = defaultdict(Counter), defaultdict(Counter)
         for (pid, sid), n in self.shift_counts.items():
+            self.duty_totals[pid] += n
+            if by_id[sid]["areaId"] in self.past_areas.get(pid, ()):
+                continue
             categories[pid][by_id[sid]["category"]] += n
             areas[pid][by_id[sid]["areaId"]] += n
-            self.duty_totals[pid] += n
         n = self.mix_min_duties
         if n is None:
             return
@@ -1135,6 +1185,7 @@ class _Import:
         if not self.person_by_sp5:
             raise Sp5Error("kein Mitarbeiter übernommen; Zuordnung 'groups' und 'excludeGroups' prüfen")
         restrictions = self.restrictions() + self.shifts_from_duties()
+        restrictions += self.areas_no_longer_worked(restrictions)
         restrictions.sort(key=lambda r: (r["personId"], r["shiftId"], r["weekday"]))  # as restrictions() sorts
         self.shift_mix()
         self.person_report(restrictions)
@@ -1178,7 +1229,8 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
                report: list | None = None, shifts_from_history: int | None = None,
                demand: str = "history", mix_min_duties: int | None = MIX_MIN_DUTIES,
                corrections: dict | None = None,
-               hidden_shifts_months: int = HIDDEN_SHIFTS_MONTHS) -> tuple[dict, list[str]]:
+               hidden_shifts_months: int = HIDDEN_SHIFTS_MONTHS,
+               recent_months: int = RECENT_MONTHS) -> tuple[dict, list[str]]:
     """Read the SP5 folder (never written) and return the dataset of the months `month`..`to` and the warnings.
     `report` (a list) receives the rows (check, person id, area, shift code, duties in the history window, area
     from groups, restriction, day type, peak demand from the history, peak demand from SP5, duties left out,
@@ -1189,8 +1241,11 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     shift mix per category and per area, on-request restrictions), check "verworfen" per reason and shift of the
     dropped duties of the history window (shift code, duties, hours, reason, SP5 shift id; see dropped_report),
     check "wochenstunden" per person whose HRSWEEK differs from the CALCBASE hours (weekly hours written, empty
-    when not exported; CALCBASE, HRSWEEK, CALCBASE hours).
+    when not exported; CALCBASE, HRSWEEK, CALCBASE hours), check "nicht_mehr" per person and area no longer worked
+    (duties in the area in the history window, restriction "auf_anfrage", date of the last duty in the area).
     `demand` "history" takes the demand from the staffing in the history window, "sp5" from the SP5 demand.
+    `recent_months` N makes the areas a person no longer worked in their last N active months on request (see
+    areas_no_longer_worked); 0 switches it off.
     `mix_min_duties` N gives everyone with at least N counted duties in the history window a shift mix; None
     writes none.
     `corrections` (a corrections file as corrections.load returns it) is applied last; check "korrektur"
@@ -1209,6 +1264,8 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
             raise Sp5Error("Bereiche und Schichten aus Diensten brauchen eine Mindestzahl ab 1 und eine Historie")
     if hidden_shifts_months < 0:
         raise Sp5Error("Ausgeblendete Schichten: Monate müssen 0 oder mehr sein")
+    if recent_months < 0:
+        raise Sp5Error("Bereiche nicht mehr gearbeitet: Monate müssen 0 oder mehr sein")
     if mix_min_duties is not None and mix_min_duties < 1:
         raise Sp5Error("Schichtmix: Mindestzahl der Dienste muss mindestens 1 sein")
     if demand not in DEMAND_SOURCES:
@@ -1220,7 +1277,7 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     if not folder.is_dir():
         raise Sp5Error(f"SP5-Ordner nicht gefunden: {folder}")
     job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history, demand,
-                  mix_min_duties, hidden_shifts_months)
+                  mix_min_duties, hidden_shifts_months, recent_months)
     dataset = job.run()
     if corrections is not None:
         rows, warnings, (people, applied, skipped), summary = corr.apply(dataset, corrections)

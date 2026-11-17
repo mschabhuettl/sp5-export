@@ -1757,3 +1757,95 @@ def test_hidden_shifts_in_use_are_taken(folder, tmp_path):
         "Monaten davor), 5 nicht übernommen" in warnings
     bad = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--hidden-shifts-months", "-1")
     assert bad.returncode == 1 and "Ausgeblendete Schichten" in bad.stderr
+
+
+def _days(month, *nth):
+    return [date.fromisoformat(f"{month}-{d:02d}") for d in nth]
+
+
+def _recent_area(folder, tmp_path):
+    """_HistoryArea with a second area HY (shifts H5 and H6) that 9201..9206 also hold, six months of history
+    (July to December 2026). 9201, 9204, 9205 and 9206 worked HY in July and August and only HX after that; 9206
+    entered in October. 9202 worked both in July to September and has no duty after that (a long absence); 9203
+    has two active months only. 9204 has an SP5 restriction "never" on H6, 9205 one on Wednesdays only."""
+    hx = _HistoryArea(folder, tmp_path)
+    hx.mapping["areas"].append({"id": "HY", "name": "Zweiter Bereich", "color": "#777777"})
+    hx.mapping["shifts"].insert(0, {"match": "H[56]", "areaId": "HY"})
+    hx.add("5GROUP", ID=951, NAME="Team Zwei", SHORTNAME="GZ", POSITION=951, HIDE=0, SUPERID=0)
+    hx.mapping["groups"].append({"match": "Team Zwei", "areaIds": ["HX", "HY"]})
+    for eid in range(9201, 9207):
+        hx.add("5GRASG", EMPLOYEEID=eid, GROUPID=951)
+    for eid in (9201, 9204, 9205, 9206):
+        for m in ("2026-07", "2026-08"):
+            hx.duty(eid, "H6", _days(m, 1, 2, 3, 4, 5))  # 06:00-14:00, EARLY
+        for m in ("2026-09", "2026-10", "2026-11", "2026-12"):
+            hx.duty(eid, "H1", _days(m, 1, 2, 3))  # 07:00-19:00, DAY
+            hx.duty(eid, "H3", _days(m, 10))  # 19:00-07:00, NIGHT
+    for m in ("2026-07", "2026-08", "2026-09"):
+        hx.duty(9202, "H1", _days(m, 1, 2, 3))
+    hx.duty(9202, "H6", _days("2026-07", 10, 11))
+    hx.duty(9203, "H6", _days("2026-11", 1, 2, 3))
+    hx.duty(9203, "H1", _days("2026-12", 1, 2, 3))
+    for k in range(7):
+        hx.add("5RESTR", EMPLOYEEID=9204, WEEKDAY=k, SHIFTID=hx.shift["H6"], RESTRICT=2)
+    hx.add("5RESTR", EMPLOYEEID=9205, WEEKDAY=2, SHIFTID=hx.shift["H6"], RESTRICT=2)
+    hx.update("5EMPL", 9206, EMPSTART="2026-10-01")
+    return hx
+
+
+def test_areas_no_longer_worked_become_on_request(folder, tmp_path):
+    hx = _recent_area(folder, tmp_path)
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = hx.export("recent.json", "--history-months", "6", "--report", str(report))
+    people = {p["id"]: p for p in result["people"]}
+    h5, h6 = f"S{hx.shift['H5']}", f"S{hx.shift['H6']}"
+
+    def restrictions(pid):
+        return [(r["shiftId"], r["weekday"], r["kind"]) for r in result["restrictions"] if r["personId"] == pid]
+
+    # Every shift of HY on request; the area stays, its share leaves the mix and the rest makes up 1.
+    assert restrictions("E9201") == [(h5, 0, "ON_REQUEST"), (h6, 0, "ON_REQUEST")]
+    assert people["E9201"]["areaIds"] == ["HX", "HY"]
+    assert people["E9201"]["shiftMix"] == {"categories": {"DAY": 0.75, "NIGHT": 0.25}, "areas": {"HX": 1.0}}
+    # The last three active months of 9202 are July to September (October to December without a duty).
+    assert restrictions("E9202") == [] and set(people["E9202"]["shiftMix"]["areas"]) == {"HX", "HY"}
+    assert restrictions("E9203") == [] and restrictions("E9206") == []  # not judged
+    assert set(people["E9206"]["shiftMix"]["areas"]) == {"HX", "HY"}
+    # The SP5 "never" for every day stays and is not doubled; one for a single weekday stays next to it.
+    assert restrictions("E9204") == [(h5, 0, "ON_REQUEST"), (h6, 0, "NEVER")]
+    assert restrictions("E9205") == [(h5, 0, "ON_REQUEST"), (h6, 0, "ON_REQUEST"), (h6, 3, "NEVER")]
+    skipped = len(people) - 4  # all but 9201, 9202, 9204 and 9205
+    assert "Bereiche nicht mehr gearbeitet (kein Dienst in den letzten 3 Monaten mit Diensten): 3 Mitarbeiter, 3 " \
+        "Paare aus Mitarbeiter und Bereich, 5 Einschränkungen 'nur auf Anfrage' ergänzt; " \
+        f"{skipped} Mitarbeiter mit weniger als 3 Monaten mit Diensten oder Eintritt ab 2026-10-01 nicht bewertet" \
+        in warnings
+
+    lines = [line.split(";") for line in report.read_text(encoding="utf-8").splitlines()]
+    rows = [r for r in lines if r[0] == "nicht_mehr"]
+    assert rows == [["nicht_mehr", pid, "HY", "", "10", "", "auf_anfrage", *[""] * 21, "2026-08-05"]
+                    for pid in ("E9201", "E9204", "E9205")]
+    assert lines[0][28] == "letzter_dienst"
+    person = {r[1]: r for r in lines if r[0] == "person"}
+    assert person["E9201"][4] == "26" and person["E9201"][16:18] == ["HX 1.000", "2"]
+
+    off, warnings, _ = hx.export("off.json", "--history-months", "6", "--recent-months", "0")
+    assert not [r for r in off["restrictions"] if r["personId"] in ("E9201", "E9205") and r["kind"] == "ON_REQUEST"]
+    assert {p["id"]: p for p in off["people"]}["E9201"]["shiftMix"] == \
+        {"categories": {"EARLY": 0.385, "DAY": 0.461, "NIGHT": 0.154}, "areas": {"HX": 0.615, "HY": 0.385}}
+    assert not [w for w in warnings if w.startswith("Bereiche nicht mehr gearbeitet")]
+    # With more months than anyone has active, nobody is judged: the dataset of 0.
+    hx.export("seven.json", "--history-months", "6", "--recent-months", "7")
+    assert (tmp_path / "seven.json").read_bytes() == (tmp_path / "off.json").read_bytes()
+    # Five active months: 9201 worked HY in the fifth last (August).
+    five, _, _ = hx.export("five.json", "--history-months", "6", "--recent-months", "5")
+    assert not [r for r in five["restrictions"] if r["personId"] == "E9201"]
+
+    # The corrections file can take it back per person.
+    mix = {"categories": {"EARLY": 0.385, "DAY": 0.461, "NIGHT": 0.154}, "areas": {"HX": 0.615, "HY": 0.385}}
+    path = _corrections(tmp_path, {"E9201": {"restrictions": [], "shiftMix": mix}})
+    back, _, _ = hx.export("back.json", "--history-months", "6", "--corrections", str(path))
+    assert not [r for r in back["restrictions"] if r["personId"] == "E9201"]
+    assert {p["id"]: p for p in back["people"]}["E9201"]["shiftMix"] == mix
+
+    bad = run(folder, MONTH, MAPPING, tmp_path / "x.json", "--recent-months", "-1")
+    assert bad.returncode == 1 and "Bereiche nicht mehr gearbeitet" in bad.stderr

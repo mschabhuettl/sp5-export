@@ -14,7 +14,15 @@ import traceback
 from pathlib import Path
 
 from sp5export import corrections as corr
-from sp5export.sp5 import DEMAND_SOURCES, HIDDEN_SHIFTS_MONTHS, MIX_MIN_DUTIES, Sp5Error, import_sp5, load_mapping
+from sp5export.sp5 import (
+    DEMAND_SOURCES,
+    HIDDEN_SHIFTS_MONTHS,
+    MIX_MIN_DUTIES,
+    RECENT_MONTHS,
+    Sp5Error,
+    import_sp5,
+    load_mapping,
+)
 from sp5export.timeutil import parse_month
 
 
@@ -44,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hidden-shifts-months", type=int, default=HIDDEN_SHIFTS_MONTHS, metavar="N",
                         help="ausgeblendete Schichten (HIDE) übernehmen, wenn sie Dienste in den Planungsmonaten oder "
                              f"den N Monaten davor haben (Standard {HIDDEN_SHIFTS_MONTHS}, 0: nie)")
+    parser.add_argument("--recent-months", type=int, default=RECENT_MONTHS, metavar="N",
+                        help="Bereiche ohne Dienst in den letzten N Monaten mit Diensten (bei Diensten darin davor) "
+                             f"werden 'nur auf Anfrage' (Standard {RECENT_MONTHS}, 0: aus)")
     parser.add_argument("--no-shift-mix", action="store_true", help="keinen Schichtmix schreiben")
     parser.add_argument("--report", help="CSV mit SP5-Ids: Bereiche und Schichten der Historie je Mitarbeiter, "
                                          "Bedarf je Bereich und Tagestyp, eine Zeile je Mitarbeiter, verworfene "
@@ -87,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         dataset, warnings = import_sp5(data, args.month, mapping, args.to, args.history_months,
                                        args.areas_from_history, rows, args.shifts_from_history, args.demand,
                                        None if args.no_shift_mix else args.mix_min_duties, corrections,
-                                       args.hidden_shifts_months)
+                                       args.hidden_shifts_months, args.recent_months)
     except Sp5Error as e:
         return _fail(str(e))
     except Exception as e:
