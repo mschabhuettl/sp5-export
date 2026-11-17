@@ -47,7 +47,7 @@ py -3 sp5_export.py --data "\\server\sp5\Daten" --month 2027-01 --mapping mappin
 | `--mix-min-duties N` | Schichtmix nur für Personen mit mindestens N Diensten in der Historie, Standard 10 (siehe unten) |
 | `--no-shift-mix` | keinen Schichtmix schreiben; der Datensatz ist dann derselbe wie vor dieser Option |
 | `--report DATEI` | CSV mit SP5-Ids und Bedarfsvergleich, eine Zeile je Person zum Durchsehen, verworfene Dienste der Historie je Grund und Schicht, abweichende Wochenstunden, Korrekturen (siehe unten) |
-| `--corrections DATEI` | Korrekturdatei mit von Hand korrigierten Stammdaten einzelner Personen, zuletzt angewendet (siehe [Korrekturdatei](#korrekturdatei)) |
+| `--corrections DATEI` | Korrekturdatei mit von Hand korrigierten Stammdaten einzelner Personen, ab Version 2 auch ausgeschlossenen Personen und Bedarf je Bereich, zuletzt angewendet (siehe [Korrekturdatei](#korrekturdatei)) |
 
 Vormonatsdienste stehen nur im ersten Planungsmonat. Für die späteren nimmt Dispofold die Dienste aus dem
 gespeicherten Plan des Monats davor; ist der noch nicht geplant, beginnt der Monat ohne Vormonatsdienste.
@@ -73,19 +73,19 @@ N Dienste hatte; Personen ohne Bereich aus Gruppen werden damit übernommen, wen
 nachschlagen lassen:
 
 ```
-pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase;feld;status;wert_export;wert_korrektur
-bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;;;;;
-bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;;;;;
-person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;;;;;
-schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;;;;;
-nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;;;;;
-verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;;;;;
-wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0;;;;
-korrektur;E12;;;;;;;;;;;;;;;;;;;;;;weeklyHours;angewendet;40.0;30.0
+pruefung;person;bereich;schicht;dienste_historie;bereich_aus_gruppen;einschraenkung;tagestyp;spitze_historie;spitze_sp5;dienste_nicht_uebernommen;stunden_historie;spitze_historie_max;wochenstunden;bereiche;mix_kategorien;mix_bereiche;auf_anfrage;grund;sp5_schicht;calcbase;hrsweek;wochenstunden_calcbase;feld;status;wert_export;wert_korrektur;dienste_nicht_uebernommen_gezaehlt
+bedarf;;AN;;412;;;MON;3;8;17;;4;;;;;;;;;;;;;;;23
+bereich;E12;AN;;41;ja;;;;;;;;;;;;;;;;;;;;;;
+person;E12;;;46;;;;;;;;;40.0;AN DR;DAY 0.891, NIGHT 0.109;AN 0.696, DR 0.304;2;;;;;;;;;;
+schicht;E12;AN;AN-N;0;;auf_anfrage;;;;;;;;;;;;;;;;;;;;;
+nicht_zugeordnet;;;S1;120;;;;;;;960.0;;;;;;;;;;;;;;;;
+verworfen;;;S1;120;;;;;;;960.0;;;;;;;nicht_zugeordnet;31;;;;;;;;
+wochenstunden;E12;;;;;;;;;;;;40.0;;;;;;;2;38.5;40.0;;;;;
+korrektur;E12;;;;;;;;;;;;;;;;;;;;;;weeklyHours;angewendet;40.0;30.0;
 ```
 
-Der Bericht hat 27 Spalten. Wer ihn nach Spaltennummer einliest: die Spalten `feld` bis `wert_korrektur` sind
-neu und stehen am Ende.
+Der Bericht hat 28 Spalten. Wer ihn nach Spaltennummer einliest: die Spalten `feld` bis `wert_korrektur` und
+`dienste_nicht_uebernommen_gezaehlt` sind neu und stehen am Ende.
 
 Zeilen `bereich` je Person und Bereich, den sie aus Gruppen hat oder in dem sie gearbeitet hat
 (`bereich_aus_gruppen` ja oder nein); Zeilen `schicht` je Person und Schicht ihrer Bereiche (siehe
@@ -139,7 +139,7 @@ Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Schicht ausgeblendet (HIDE):
 Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Schicht länger als 12 Stunden oder ohne Dienstzeit: 5 Dienste, 39.0 Stunden
 Warnung: Verworfene Dienste 2026-12-01..2026-12-31, sonstige: 3 Dienste, 12.0 Stunden (2 ohne Schicht in 5SHIFT, 1 an Tagen mit ganztägiger Abwesenheit, 0 neben einem anderen Eintrag desselben Tags)
 Warnung: Verworfene Dienste 2026-12-01..2026-12-31: zusammen 26 Dienste übernommener Mitarbeiter auf Schichten, die nicht übernommen werden (wie die Warnung '... Dienste 2026-12-01..2026-12-31 mit nicht zugeordneter Schicht ignoriert')
-Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Mitarbeiter nicht übernommen: 29 Dienste, 256.0 Stunden auf übernommenen Schichten (die nicht gezählten der Bedarfszeilen), dazu 52 Dienste, 505.0 Stunden auf Schichten, die nicht übernommen werden
+Warnung: Verworfene Dienste 2026-12-01..2026-12-31, Mitarbeiter nicht übernommen: 29 Dienste, 256.0 Stunden auf übernommenen Schichten (im Bedarf gezählt außer ausgeschlossene Gruppe), dazu 52 Dienste, 505.0 Stunden auf Schichten, die nicht übernommen werden
 ```
 
 Wie die Zahlen zusammenpassen:
@@ -159,7 +159,8 @@ Wie die Zahlen zusammenpassen:
   mit ganztägiger Abwesenheit, und Einträge neben einem anderen Eintrag desselben Tags (der Tag hat einen
   übernommenen Dienst, oder ein früherer Eintrag zählt schon).
 - `Mitarbeiter nicht übernommen` sind Dienste von Personen außerhalb des Datensatzes. Die Dienste auf übernommenen
-  Schichten sind die Summe der `nicht gezählt` aus den Zeilen `Bedarf im Bereich ...`; ihre Einträge auf
+  Schichten sind die Summe der `nicht gezählt` und der gezählten `davon ... nicht übernommen` aus den Zeilen
+  `Bedarf im Bereich ...`; ihre Einträge auf
   Schichten, die nicht übernommen werden, kommen in keiner anderen Warnung vor.
 
 Mit `--report` steht je Grund und Schicht eine Zeile `verworfen` mit Kürzel (`schicht`), `dienste_historie`,
@@ -231,8 +232,37 @@ Mit `--report` steht je Feld eine Zeile `korrektur` mit `person`, `feld`, `statu
 korrigierten (`wert_korrektur`) als kurzer Text; Regeln und Einschränkungen als Anzahl. Werte aus der Datei, die
 nicht gültig sind, und `note` stehen nie im Bericht oder in den Warnungen.
 
-Ein anderes `format`, eine `version` über 1 oder eine nicht lesbare Datei beenden den Export mit einem Fehler.
-Ohne `--corrections` ist der Datensatz derselbe wie ohne diese Option.
+#### Version 2: Personen ausschließen, Bedarf setzen
+
+Version 2 kann zusätzlich Personen ganz weglassen und den Bedarf eines Bereichs von Hand setzen, etwa für
+einen frischen Datensatz, ohne vorher SP5 zu bereinigen (Ausgetretene ohne Austrittsdatum, Bereiche, in denen
+die Historie ein falsches Bild gibt). Eine Datei der Version 1 wirkt genau wie bisher; `exclude` ist dort ein
+unbekanntes Feld und `demand` wird nicht gelesen.
+
+```json
+{"format": "dispofold/corrections", "version": 2,
+ "people": {"E12": {"exclude": true, "note": "ausgetreten, Austritt fehlt in SP5"},
+            "E13": {"weeklyHours": 30.0}},
+ "demand": {"LF": [{"days": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"], "date": null,
+                    "from": "05:20", "to": "05:20", "min": 1, "max": 1}]}}
+```
+
+- `"exclude": true` lässt die Person weg, mit allem, was sich auf sie bezieht: Einschränkungen, Historie,
+  Abwesenheiten, Wünsche, fixe Dienste, Vormonatsdienste. Die anderen Felder der Person werden dann nicht
+  angewendet. `false` oder fehlend: wie bisher. Ihre Dienste zählen weiter für den Bedarf aus der Historie.
+  Die letzte Person des Datensatzes lässt sich nicht ausschließen.
+- `demand.<Bereich>` ersetzt alle Bedarfsregeln des Bereichs. Die Einträge sind Bedarfsregeln des Datenformats
+  ohne `areaId`; `[]` entfernt den Bedarf des Bereichs. Geprüft wird wie beim Import (`days` aus `MON` bis
+  `SUN` und `HOL` oder ein `date`, `from` und `to` als Uhrzeit, `min` ganze Zahl ab 0, `max` null oder ab
+  `min`). Ein unbekannter Bereich oder eine ungültige Regel überspringt den ganzen Eintrag dieses Bereichs.
+  Die neuen Regeln stehen dort, wo die erste Regel des Bereichs stand.
+- Im Bericht: `feld` `exclude` mit `status` `ausgeschlossen` (oder `person_fehlt`, `ungueltig`), und je
+  Bereich eine Zeile ohne Person mit `feld` `demand:<Bereich>` und den Zahlen der Regeln vorher und nachher.
+- Eine zweite Zeile fasst zusammen: `Korrekturen Version 2: 1 Mitarbeiter ausgeschlossen, Bedarf in 1 Bereichen
+  ersetzt, 0 Bereiche übersprungen`.
+
+Ein anderes `format`, eine `version` über 2 oder eine nicht lesbare Datei beenden den Export mit einem Fehler,
+ebenso `demand`, das kein Objekt ist. Ohne `--corrections` ist der Datensatz derselbe wie ohne diese Option.
 
 ### Dienste auf ignorierten Schichten in den Planungsmonaten
 
@@ -350,8 +380,11 @@ ist dagegen die tatsächliche Besetzung in der Historie. Deshalb nimmt der Expor
 den Diensten der Historie (`--history-months`, dieselben Dienste wie für die Historie: Istplan `5MASHI` ohne
 `TYPE` 1, Sonderdienste `5SPSHI`, Dienstzyklen; an Tagen mit ganztägiger Abwesenheit gilt kein Dienst):
 
-- Es zählen nur Dienste von Personen, die übernommen werden, in Schichten mit Bereich (nicht `ignoreShifts`,
-  nicht `excludeGroups`): Nur sie kann Dispofold einplanen.
+- Es zählen die Dienste aller Personen in Schichten mit Bereich (nicht `ignoreShifts`, nicht ausgeblendet),
+  auch von Personen, die nicht übernommen werden: ausgetreten, noch nicht eingetreten, ausgeblendet, ohne
+  Bereich oder ohne Wochenstunden, oder mit `exclude` aus der Korrekturdatei entfernt. Ihre Dienste mussten
+  andere übernehmen, sonst fehlt der Bedarf genau dort, wo jemand gegangen ist. Nicht zählen nur Personen in
+  `excludeGroups`: Deren Bedarf soll wegfallen.
 - Je Bereich und Tagestyp (`MON` bis `SUN`, `HOL` für die Feiertage, die auch für die Historie gelten; ein
   Feiertag zählt nur als `HOL`) wird der Tag an jeder Beginn- und Endzeit der im Bereich gearbeiteten Schichten
   geteilt. Für jeden Abschnitt zählt der Export an jedem Tag dieses Typs im Zeitraum, wie viele gleichzeitig im
@@ -381,10 +414,11 @@ einem Fehler.
 Bei jedem Lauf mit Historie (gleich mit welchem `--demand`) meldet der Export je Bereich nur Zahlen: je
 Tagestyp die Spitze des Bedarfs aus der Historie gegen die Spitze des SP5-Bedarfs (beide als höchste
 gleichzeitige Besetzung eines Kalendertags, samt dem Ende der Nachtdienste des Vortags; aus der Historie als
-`min-max`, etwa `MON 1-2/8`), wie viele Dienste gezählt wurden und wie viele nicht, weil die Person nicht
-übernommen wird (ausgeschlossene Gruppe, ausgeblendet, ausgetreten usw.). Mit `--report` stehen dieselben Zahlen je Bereich und
-Tagestyp in den Zeilen `bedarf`: `dienste_historie` gezählte Dienste, `spitze_historie` (min), `spitze_historie_max`, `spitze_sp5` und
-`dienste_nicht_uebernommen`.
+`min-max`, etwa `MON 1-2/8`), wie viele Dienste gezählt wurden, davon wie viele von Personen, die nicht
+übernommen werden, und wie viele nicht gezählt wurden (ausgeschlossene Gruppe). Mit `--report` stehen dieselben
+Zahlen je Bereich und Tagestyp in den Zeilen `bedarf`: `dienste_historie` gezählte Dienste, `spitze_historie`
+(min), `spitze_historie_max`, `spitze_sp5`, `dienste_nicht_uebernommen` (nicht gezählt, ausgeschlossene
+Gruppe) und `dienste_nicht_uebernommen_gezaehlt` (gezählt, Person nicht im Datensatz).
 
 Die Ausgabedatei darf nicht im SP5-Ordner liegen. Warnungen und eine Zusammenfassung erscheinen auf der
 Konsole (stderr). Bei einem Fehler endet das Programm mit Exit-Code 1 und schreibt keine Datei.
@@ -490,7 +524,7 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Schichten aus Diensten: 3 Mitarbeiter mit zu kurzer Historie ... nicht bewertet, 20 Paare ... mit Einschränkung aus SP5 belassen` | Immer vorhanden (außer ohne Historie). |
 | `Schichten aus Diensten (mindestens 3): 12 Einschränkungen 'nur auf Anfrage' ergänzt` | Nur mit `--shifts-from-history`. |
 | `Schichtmix aus der Historie: 120 Mitarbeiter mit Mix, 14 mit weniger als 10 Diensten in den 12 Monaten davor ohne Mix` | Immer vorhanden außer mit `--no-shift-mix`; siehe [Schichtmix aus der Historie](#schichtmix-aus-der-historie). |
-| `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3-4/8, ...; 1200 Dienste ... gezählt, 17 nicht gezählt ...` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: Zuordnung und Gruppen prüfen. |
+| `Bedarf im Bereich AN, Spitze je Tagestyp aus der Historie/aus SP5: MON 3-4/8, ...; 1200 Dienste ... gezählt, davon 40 von Mitarbeitern, die nicht übernommen werden; 17 nicht gezählt (ausgeschlossene Gruppe)` | Immer vorhanden (außer ohne Historie); siehe [Bedarf aus der Historie](#bedarf-aus-der-historie). Eine große Abweichung ist bei SP5-Bedarf zu erwarten. Viele nicht gezählte Dienste: `excludeGroups` prüfen. |
 | `Schicht 'S1' nicht zugeordnet: 120 Dienste, 960.0 Stunden ...` oder `Schicht 'X2' ignoriert: ...` | Je Schicht ohne Bereich mit Diensten in der Historie; siehe [Dienste auf Schichten ohne Bereich](#dienste-auf-schichten-ohne-bereich). Nicht zugeordnet: in `shifts` eintragen, wenn Dispofold sie planen soll. Ignoriert ist Absicht. |
 | `Schichten ohne Bereich: 2 Schichten, 160 Dienste, 1280.0 Stunden ...` | Immer vorhanden (außer ohne Historie): die Summe dazu. |
 | `Verworfene Dienste 2026-12-01..2026-12-31, <Grund>: ...` | Immer vorhanden (außer ohne Historie): verworfene Dienste der Historie je Grund; siehe [Verworfene Dienste der Historie](#verworfene-dienste-der-historie). |
@@ -498,6 +532,8 @@ Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen. Die wichtigsten:
 | `Stundenkonto und offene Ersatzruhetage werden aus SP5 nicht übernommen (0)` | Immer vorhanden; Werte in Dispofold pflegen. |
 | `Korrekturen: 3 Mitarbeiter korrigiert, 7 Felder angewendet, 1 Felder übersprungen` | Nur mit `--corrections`; siehe [Korrekturdatei](#korrekturdatei). |
 | `Korrektur E12 weeklyHours übersprungen: <Grund>` oder `Korrektur für E12 übersprungen: Mitarbeiter nicht exportiert` | Die Korrektur in der Datei berichtigen oder entfernen. |
+| `Korrekturen Version 2: 1 Mitarbeiter ausgeschlossen, Bedarf in 2 Bereichen ersetzt, 0 Bereiche übersprungen` | Nur mit einer Korrekturdatei der Version 2. |
+| `Korrektur demand:AN übersprungen: <Grund>` | Die Bedarfsregeln des Bereichs in der Datei berichtigen. |
 | `Tabelle 5XXX fehlt, wird als leer behandelt` | Falscher Ordner oder unvollständige Kopie. |
 | `... Einschränkungen nur für Feiertage nicht übernommen` | Das Datenformat kennt keine Feiertagseinschränkung. |
 | `... Einschränkungen ohne gültigen Grad (RESTRICT) als 'nie' übernommen` | Grad in SP5 prüfen. |
