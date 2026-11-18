@@ -127,6 +127,7 @@
         "externalId": { "$ref": "#/$defs/stringOrNull" },
         "entryDate": { "$ref": "#/$defs/dateOrNull" },
         "exitDate": { "$ref": "#/$defs/dateOrNull" },
+        "excludedFrom": { "$ref": "#/$defs/dateOrNull" },
         "shiftMix": { "anyOf": [{ "$ref": "#/$defs/shiftMix" }, { "type": "null" }] }
       }
     },

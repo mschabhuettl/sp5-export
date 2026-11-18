@@ -115,6 +115,7 @@ leer sein. Felder, die im Beispiel `null` sind, dürfen fehlen.
 | person | `familyRules` | Familienregel je Wochentag (1..7): spätestes Ende, frühester Beginn, keine Nacht |
 | person | `externalId` | Id im Quellsystem, z. B. Personalnummer |
 | person | `entryDate`, `exitDate` | erster und letzter Tag der Beschäftigung, `null` = offen. Tage außerhalb werden nicht verplant, das Soll wird anteilig berechnet |
+| person | `excludedFrom` | optional, nur in Datensätzen aus Dispofold: die Person wird nicht mehr aus dem Quellsystem übernommen und ab diesem Tag nicht geplant (wie nach einem Austritt); fehlt es oder ist es `null`, wird sie übernommen. Siehe [Anleitung](anleitung.md#nicht-mehr-aus-dem-quellsystem-übernehmen) |
 | person | `shiftMix` | optional, gewohnte Verteilung der Dienste, z. B. aus der Historie: `{"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"AN": 0.7, "DR": 0.3}}`. Anteile von 0 bis 1, jede nicht leere Liste ergibt zusammen 1 (±0,01), Bereiche nur aus `areaIds`. Fehlt sie oder ist sie `null`, gilt keine Verteilung. Mit Anteilen je Kategorie fällt die Person aus der Fairness Nachtdienste und der Abwechslung Dienste. Siehe Regel `shiftMix` in [regeln.md](regeln.md) |
 | restriction | `shiftId` / `category` | genau eines von beiden: eine Schicht oder alle Schichten einer Kategorie (z. B. `NIGHT`) |
 | restriction | `weekday` | 1..7, 0 = jeden Tag |
@@ -166,7 +167,8 @@ prüft seine Einträge nicht.
 
 - `people` je Person die korrigierten Felder (`weeklyHours`, `areaIds`, `hoursAccount`, `compRestBalance`,
   `familyRules`, `entryDate`, `exitDate`, `shiftMix`, `restrictions` als ganze Liste ohne `personId`) oder
-  `"exclude": true` für eine Person, die deshalb im Datensatz fehlt.
+  `"exclude": true` für eine Person, die deshalb im Datensatz fehlt. Kennt Dispofold sie, behält der Import sie
+  mit ihrer Historie und `excludedFrom` (siehe [REST-Schnittstelle](api.md#stammdaten-und-import)).
 - `demand` je Bereich alle Bedarfsregeln ohne `areaId`.
 
 Dispofold speichert den Abschnitt mit dem Stand des Imports. Die Korrekturdatei, die Dispofold danach

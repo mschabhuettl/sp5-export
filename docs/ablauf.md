@@ -199,7 +199,8 @@ Einschränkungen als Anzahl.
   löscht das Feld in `korrekturen.json` von Hand.
 - `status` `ausgeschlossen` (Feld `exclude`): Die Person fehlt im Datensatz, mit allem, was sich auf sie bezieht.
 - `status` `person_fehlt`: Die Person wird gar nicht exportiert (etwa schon in SP5 ausgetreten). Die Korrektur
-  fehlt in der nächsten Korrekturdatei aus Dispofold von selbst.
+  fehlt in der nächsten Korrekturdatei aus Dispofold von selbst; nur `exclude` einer Person, die in Dispofold
+  nicht mehr aus dem Quellsystem übernommen wird, bleibt darin, bis man das dort ausschaltet. Das schadet nicht.
 - `status` `ungueltig`, Grund in `grund`: Das Feld wurde übersprungen, der Datensatz hat den Wert aus SP5. In
   Dispofold neu korrigieren oder in der Datei berichtigen: Die nächste Korrekturdatei aus Dispofold enthält nur,
   was angewendet wurde.
@@ -253,8 +254,12 @@ zurück. So bleibt es bei jedem neuen Export erhalten, ohne dass SP5 bereinigt w
      Eintritt und Austritt, gewohnte Verteilung, Familienregeln und Einschränkungen. Unter **Einschränkungen** setzt
      **Ganzer Bereich** (**keine**, **nur auf Anfrage** oder **nie**) alle Schichten eines Bereichs auf einmal, für
      jeden Tag; so lässt sich etwa ein Bereich aus `--recent-months` wieder freigeben.
-   - **Person entfernen** für Personen, die nicht geplant werden sollen (etwa Ausgetretene ohne Austrittsdatum in
-     SP5). In der Korrekturdatei wird daraus `"exclude": true`.
+   - Für Personen, die nicht geplant werden sollen (etwa Ausgetretene ohne Austrittsdatum in SP5): auf der Seite
+     der Person **Aus dem Quellsystem nicht mehr übernehmen** einschalten (Dispofold ab 0.16.0). Die Person bleibt
+     in Dispofold mit ihrer Historie und den abgeschlossenen Monaten und wird danach nicht mehr geplant. In der
+     Korrekturdatei wird daraus `"exclude": true`; der Export lässt sie weg, Dispofold behält sie beim Import
+     weiter ausgeschlossen. Eine Person ohne Historie und ohne abgeschlossene Monate lässt sich auch mit **Person
+     entfernen** ausschließen.
    - **Einstellungen**, **Stammdaten**, **Bedarf**: Bedarf eines Bereichs anlegen oder ändern. In der Datei ersetzt
      das alle Bedarfsregeln des Bereichs.
 3. **Einstellungen**, **Daten**, Abschnitt **Korrekturdatei**: **Änderungen als Korrekturdatei exportieren**.
@@ -295,8 +300,12 @@ Was beim Ersetzen nicht in die neue Datei kommt:
   hält sie getrennt fest.
 - Felder mit `status` `ungueltig` oder `person_fehlt`: Sie wurden nicht angewendet (siehe
   [Den Bericht lesen](#den-bericht-lesen)).
-- Eine Person mit `"exclude": true` bleibt in jeder neuen Datei ausgeschlossen. Wer sie wieder planen will, löscht
-  ihren Eintrag in `korrekturen.json` von Hand und exportiert neu.
+- Eine Person mit `"exclude": true` bleibt in jeder neuen Datei ausgeschlossen, bis man in Dispofold **Aus dem
+  Quellsystem nicht mehr übernehmen** wieder ausschaltet (ab Dispofold 0.16.0; der Schalter steht auch bei einem
+  Ausschluss aus einer früheren Datei, solange Dispofold die Person kennt). Die nächste Korrekturdatei enthält sie
+  dann nicht mehr, auch wenn sonst nichts darin steht; mit ihr neu exportieren, dann ist die Person wieder im
+  Datensatz. Kennt Dispofold die Person nicht (etwa nach einer Neuinstallation), oder mit einer älteren Version,
+  löscht man ihren Eintrag in `korrekturen.json` von Hand und exportiert neu.
 
 Eine Korrekturdatei lässt sich auch von Hand schreiben; ihr Format und alle Prüfungen stehen im README unter
 Korrekturdatei. Ein erfundenes Beispiel der Version 2:
@@ -396,8 +405,8 @@ Sie sind nicht anonym im strengen Sinn, nur ohne Namen: an möglichst wenige und
 "!" im Namen kommt so in Dispofold an. Ob jemand übernommen wird, hängt nur von `HIDE`, der Beschäftigung
 (`EMPSTART`/`EMPEND`), den Gruppen (`excludeGroups`), den Wochenstunden und den Bereichen ab. Sind solche Einträge
 keine Personen, die geplant werden sollen, sie in SP5 ausblenden, ihr Austrittsdatum eintragen oder sie in eine
-Gruppe aus `excludeGroups` nehmen, oder in Dispofold mit **Person entfernen** ausschließen und als Korrekturdatei
-exportieren (`exclude`). Ihre Dienste zählen weiter für den Bedarf aus der Historie, außer mit `excludeGroups`.
+Gruppe aus `excludeGroups` nehmen, oder in Dispofold mit **Aus dem Quellsystem nicht mehr übernehmen** (oder
+**Person entfernen**) ausschließen und als Korrekturdatei exportieren (`exclude`). Ihre Dienste zählen weiter für den Bedarf aus der Historie, außer mit `excludeGroups`.
 
 **Bereich ohne Bedarf.** Dispofold meldet unter **Prüfen**, **Stammdaten** "Bereich TS hat keinen Bedarf." mit dem
 Hinweis "Bedarf für den Bereich anlegen, sonst zählt jeder Dienst dort als Überbesetzung." Im Protokoll steht für
@@ -423,9 +432,9 @@ Dispofold aktualisieren. Ist der Wert selbst falsch, in SP5 die Felder der Grund
 Berichts.
 
 **Ausgetretene.** Wer in SP5 kein Austrittsdatum hat und nicht ausgeblendet ist, gilt als beschäftigt und wird
-übernommen. Abhilfe: das Austrittsdatum (`EMPEND`) in SP5 eintragen, oder in Dispofold **Person entfernen** (in der
-Korrekturdatei `exclude`) und als Korrekturdatei exportieren. Kommt die Person in einem abgeschlossenen Monat vor,
-lässt sie sich nicht entfernen; dann in Dispofold den **Austritt** eintragen (`exitDate`). Ihre Dienste zählen
-weiter für den Bedarf aus der Historie: Die Arbeit, die sie gemacht hat, müssen andere übernehmen. Eine Korrektur
+übernommen. Abhilfe: das Austrittsdatum (`EMPEND`) in SP5 eintragen, oder in Dispofold auf der Seite der Person
+**Aus dem Quellsystem nicht mehr übernehmen** einschalten (in der Korrekturdatei `exclude`, auch für Personen, die
+in abgeschlossenen Monaten oder in der Historie vorkommen) und als Korrekturdatei exportieren. Alternativ in
+Dispofold den **Austritt** eintragen (`exitDate`). Ihre Dienste zählen weiter für den Bedarf aus der Historie: Die Arbeit, die sie gemacht hat, müssen andere übernehmen. Eine Korrektur
 für jemanden, den SP5 inzwischen selbst nicht mehr exportiert, steht im Bericht mit `status` `person_fehlt` und
-fehlt in der nächsten Korrekturdatei aus Dispofold von selbst.
+fehlt in der nächsten Korrekturdatei aus Dispofold von selbst (außer `exclude`, siehe oben).
