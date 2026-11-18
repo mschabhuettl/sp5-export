@@ -396,7 +396,7 @@ Bereich eine Zeile `nicht_mehr` mit `person`, `bereich`, den Diensten im Bereich
 
 Rückgängig für einzelne Personen: in der [Korrekturdatei](#korrekturdatei) `restrictions` der Person ohne die
 ergänzten Einträge und, wenn gewünscht, `shiftMix` mit dem Bereich angeben (die Korrekturen werden zuletzt
-angewendet), etwa im Korrektureditor dispofold-lupe im Einschränkungsraster des Bereichs. Für alle:
+angewendet), etwa in Dispofold geändert und mit „Änderungen als Korrekturdatei exportieren“ gesichert. Für alle:
 `--recent-months 0`.
 
 ### Schichtmix aus der Historie
