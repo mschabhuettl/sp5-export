@@ -1249,7 +1249,8 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     `mix_min_duties` N gives everyone with at least N counted duties in the history window a shift mix; None
     writes none.
     `corrections` (a corrections file as corrections.load returns it) is applied last; check "korrektur"
-    per corrected field (person, reason; field, status, exported value, corrected value)."""
+    per corrected field (person, reason; field, status, exported value, corrected value). The dataset lists the
+    applied entries in its section "appliedCorrections" (empty without a file)."""
     validate_mapping(mapping)
     months = [month]
     while to and months[-1] < to:
@@ -1279,6 +1280,7 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
     job = _Import(folder, months, mapping, history_months, areas_from_history, shifts_from_history, demand,
                   mix_min_duties, hidden_shifts_months, recent_months)
     dataset = job.run()
+    rows = []
     if corrections is not None:
         rows, warnings, (people, applied, skipped), summary = corr.apply(dataset, corrections)
         job.report_rows += [("korrektur", pid, *[""] * 16, why, "", "", "", "", field, status, old, new)
@@ -1288,6 +1290,7 @@ def import_sp5(folder: str | Path, month: str, mapping: dict, to: str | None = N
                  "übersprungen")
         if summary:
             job.warn(summary)
+    dataset["appliedCorrections"] = corr.section(corrections, rows)
     if report is not None:
         rows = [r + ("",) * (REPORT_COLUMNS - len(r)) for r in job.report_rows]
         report.extend(sorted(rows, key=lambda r: (r[0], int(r[1][1:]) if r[1] else 0, r[2], r[3])))

@@ -4,7 +4,7 @@ Die Werkzeuge tauschen zwei JSON-Dokumente aus:
 
 - **Datensatz** (`dispofold/dataset`, Version 2): Stammdaten und Planungsmonate. Jede Datenquelle liefert
   genau dieses Dokument (ein Export aus dem bisherigen Planungssystem, die synthetischen Demodaten, später
-  LOGA). Es wird unter **Import/Export**, **Datensatz importieren** hochgeladen.
+  LOGA). Es wird unter **Einstellungen > Daten**, **Datensatz importieren** hochgeladen.
 - **Plan** (`dispofold/plan`): der Dienstplan eines Monats. Das ist das JSON-Exportformat; ein
   exportierter Plan lässt sich wieder importieren.
 
@@ -112,13 +112,13 @@ leer sein. Felder, die im Beispiel `null` sind, dürfen fehlen.
 | person | `areaIds` | Bereiche, in denen die Person eingesetzt werden darf |
 | person | `hoursAccount` | Stundenkonto aus Vormonaten (positiv: Plusstunden) |
 | person | `compRestBalance` | offene Ersatzruhetage |
-| person | `familyRules` | Familienwunsch je Wochentag (1..7): spätestes Ende, frühester Beginn, keine Nacht |
+| person | `familyRules` | Familienregel je Wochentag (1..7): spätestes Ende, frühester Beginn, keine Nacht |
 | person | `externalId` | Id im Quellsystem, z. B. Personalnummer |
 | person | `entryDate`, `exitDate` | erster und letzter Tag der Beschäftigung, `null` = offen. Tage außerhalb werden nicht verplant, das Soll wird anteilig berechnet |
-| person | `shiftMix` | optional, gewohnte Verteilung der Dienste, z. B. aus der Historie: `{"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"AN": 0.7, "DR": 0.3}}`. Anteile von 0 bis 1, jede nicht leere Liste ergibt zusammen 1 (±0,01), Bereiche nur aus `areaIds`. Fehlt sie oder ist sie `null`, gilt keine Verteilung. Siehe Regel `shiftMix` in [regeln.md](regeln.md) |
+| person | `shiftMix` | optional, gewohnte Verteilung der Dienste, z. B. aus der Historie: `{"categories": {"DAY": 0.9, "NIGHT": 0.1}, "areas": {"AN": 0.7, "DR": 0.3}}`. Anteile von 0 bis 1, jede nicht leere Liste ergibt zusammen 1 (±0,01), Bereiche nur aus `areaIds`. Fehlt sie oder ist sie `null`, gilt keine Verteilung. Mit Anteilen je Kategorie fällt die Person aus der Fairness Nachtdienste und der Abwechslung Dienste. Siehe Regel `shiftMix` in [regeln.md](regeln.md) |
 | restriction | `shiftId` / `category` | genau eines von beiden: eine Schicht oder alle Schichten einer Kategorie (z. B. `NIGHT`) |
 | restriction | `weekday` | 1..7, 0 = jeden Tag |
-| restriction | `kind` | `NEVER` (nie, hart) oder `ON_REQUEST` (nur auf Anfrage: nie automatisch geplant, nur von Hand) |
+| restriction | `kind` | `NEVER` (nie, Gruppe Regelverstoß) oder `ON_REQUEST` (nur auf Anfrage: nie automatisch geplant, nur von Hand) |
 | restriction | `validFrom`, `validTo` | erster und letzter Tag, an dem die Einschränkung gilt, `null` = offen |
 | history | | Kennzahlen früherer Monate für die Fairness über mehrere Monate |
 | history | `source` | `import` (Istwerte aus dem Quellsystem) oder `plan` (beim Monatsabschluss geschrieben) |
@@ -128,7 +128,7 @@ leer sein. Felder, die im Beispiel `null` sind, dürfen fehlen.
 | history | `compRestUsed`, `compRestEarned` | im Monat genommene und (durch Feiertagsarbeit) erworbene Ersatzruhetage |
 | period | `absences` | Abwesenheiten mit Abwesenheitsart |
 | period | `wishes` | `OFF` (frei), `DUTY` (Dienst), `SHIFT` (diese Schicht), `NOT_SHIFT` (diese Schicht nicht); bei `SHIFT` und `NOT_SHIFT` ist `shiftId` Pflicht |
-| period | `fixed` | fixe Dienste; `shiftId: null` fixiert einen freien Tag |
+| period | `fixed` | Vorgaben; `shiftId: null` gibt einen freien Tag vor |
 | period | `previousDuties` | Dienste der letzten Tage des Vormonats (Ruhezeit und Blöcke am Monatsanfang) |
 
 Beispiele für Abwesenheitsarten:
@@ -148,6 +148,35 @@ Der Bedarf gilt je Bereich und Tageszeit, nicht je Schicht. Der Solver wählt un
 Bereichs. An einem Feiertag ersetzen die `HOL`-Regeln eines Bereichs dessen Wochentagsregeln (falls der
 Bereich `HOL`-Regeln hat). Regeln mit `date` ersetzen für diesen Bereich an diesem Tag alle anderen.
 
+### Angewendete Korrekturen
+
+Ein Datensatz kann zusätzlich den Abschnitt `appliedCorrections` haben (optional, ab Dispofold 0.15.0
+ausgewertet): die Korrekturen, die die Quelle beim Erstellen schon angewendet hat, im Format der
+Korrekturdatei (`dispofold/corrections`, Version 2), nur die tatsächlich angewendeten Einträge. Die Werte
+stehen also schon in den Personen und im Bedarf; der Import wendet den Abschnitt nicht noch einmal an und
+prüft seine Einträge nicht.
+
+```json
+"appliedCorrections": {
+  "format": "dispofold/corrections", "version": 2,
+  "people": { "P0001": { "weeklyHours": 30.0 }, "P0003": { "exclude": true } },
+  "demand": { "TV": [ { "days": ["MON"], "date": null, "from": "07:00", "to": "19:00", "min": 2, "max": 2 } ] }
+}
+```
+
+- `people` je Person die korrigierten Felder (`weeklyHours`, `areaIds`, `hoursAccount`, `compRestBalance`,
+  `familyRules`, `entryDate`, `exitDate`, `shiftMix`, `restrictions` als ganze Liste ohne `personId`) oder
+  `"exclude": true` für eine Person, die deshalb im Datensatz fehlt.
+- `demand` je Bereich alle Bedarfsregeln ohne `areaId`.
+
+Dispofold speichert den Abschnitt mit dem Stand des Imports. Die Korrekturdatei, die Dispofold danach
+exportiert, enthält diese Korrekturen und die Änderungen seit dem Import und ersetzt damit die bisherige
+Korrekturdatei (siehe [REST-Schnittstelle](api.md#stammdaten-und-import)). Fehlt der Abschnitt (ältere
+Quellen) oder ist er kein Objekt mit `format` `dispofold/corrections` und `people`, enthält die
+Korrekturdatei nur die Änderungen seit dem Import.
+Die Version des Datensatzes bleibt 2: Ältere Versionen von Dispofold ignorieren den Abschnitt wie jeden
+unbekannten Schlüssel.
+
 ### Prüfung beim Import
 
 Version 1 wird nicht mehr angenommen. Ein Datensatz wird nur als Ganzes übernommen: Findet die Prüfung
@@ -160,20 +189,20 @@ Abgelehnt wird insbesondere:
 - falsches `format` oder eine andere `version` als 2;
 - ein Datensatz ohne Personen oder ohne Schichten;
 - fehlende Pflichtwerte: Ids, Beginn und Ende einer Schicht, `from` und `to` einer Bedarfsregel, Datum
-  von Feiertagen, Abwesenheiten, Wünschen, fixen Diensten und Vormonatsdiensten, die Listen des Datensatzes
+  von Feiertagen, Abwesenheiten, Wünschen, Vorgaben und Vormonatsdiensten, die Listen des Datensatzes
   und eines Planungsmonats;
 - doppelte Ids bei Bereichen, Schichten, Personen und Abwesenheitsarten, doppelte Planungsmonate, zwei
-  fixe Dienste derselben Person am selben Tag, zwei Historieneinträge derselben Person im selben Monat;
+  Vorgaben derselben Person am selben Tag, zwei Historieneinträge derselben Person im selben Monat;
 - Verweise auf unbekannte Bereiche, Personen, Schichten oder Abwesenheitsarten;
 - Monate in der Historie, die nicht `YYYY-MM` sind, und eine `source` außer `import` und `plan`;
 - Wochenstunden kleiner oder gleich 0, `exitDate` vor `entryDate`, eine gewohnte Verteilung (`shiftMix`) mit
   Anteilen außerhalb von 0 bis 1, einer Summe ungleich 1 oder einem Bereich, der nicht zur Person gehört;
 - unbekannte Tagestypen im Bedarf, eine Bedarfsregel ohne `days` und ohne `date`, `min` kleiner als 0 oder
   `max` kleiner als `min`;
-- Wochentage einer Einschränkung außerhalb von 0..7 oder eines Familienwunsches außerhalb von 1..7, eine
+- Wochentage einer Einschränkung außerhalb von 0..7 oder einer Familienregel außerhalb von 1..7, eine
   Einschränkung ohne oder mit beiden von `shiftId` und `category`, `validTo` vor `validFrom`;
 - ein Wunsch `SHIFT` oder `NOT_SHIFT` ohne `shiftId`;
-- Abwesenheiten, Wünsche und fixe Dienste außerhalb ihres Planungsmonats, Vormonatsdienste nicht vor
+- Abwesenheiten, Wünsche und Vorgaben außerhalb ihres Planungsmonats, Vormonatsdienste nicht vor
   dessen Beginn;
 - Schichten, die länger als die Regel „Höchstdauer eines Dienstes" (`maxDutyHours`) sind (`end <= start` heißt Folgetag, gleiche
   Zeiten also 24 Stunden);
@@ -207,8 +236,8 @@ gespeicherten Stammdaten geprüft.
   Ersatzruhetag.
 - `pinned: true` heißt: von der Planung festgelegt, der Solver ändert es beim Neuplanen nicht.
 - `status`: `EMPTY`, `SOLVING`, `SOLVED`, `STOPPED`, `FAILED`, `CLOSED` (Monat abgeschlossen).
-- Der Score hat drei Stufen: `hard` (Regeln aus KV und Qualifikation, muss 0 sein), `medium` (nicht
-  gedeckter Bedarf und Überbesetzung, siehe [regeln.md](regeln.md)) und `soft` (Wünsche, Fairness, Blöcke
+- Der Score hat drei Teile (Gruppen): `hard` (Regelverstoß: Regeln aus KV und Qualifikation, muss 0 sein), `medium` (Bedarf: nicht
+  gedeckter Bedarf und Überbesetzung, siehe [regeln.md](regeln.md)) und `soft` (Qualität: Wünsche, Fairness, Blöcke
   usw.).
 
 ## Fehlercodes beim Import
@@ -232,10 +261,10 @@ der Monat des Eintrags.
 | `import.noShifts` | | keine Schichten |
 | `import.missingField` | `kind`, `field`, `index`, `month` | Pflichtwert oder Pflichtliste fehlt (`field` fehlt, wenn der ganze Eintrag `null` ist) |
 | `import.duplicateId` | `kind`, `id` | Id doppelt (`area`, `shift`, `person`, `absenceType`; bei `period` ist `id` der Monat) |
-| `import.duplicateEntry` | `kind`, `personId`, `date` oder `month` | zwei fixe Dienste derselben Person am selben Tag (`fixed`) oder zwei Historieneinträge derselben Person im selben Monat (`history`) |
+| `import.duplicateEntry` | `kind`, `personId`, `date` oder `month` | zwei Vorgaben derselben Person am selben Tag (`fixed`) oder zwei Historieneinträge derselben Person im selben Monat (`history`) |
 | `import.unknownArea` | `kind`, `areaId`, `shiftId` / `personId` / `index` | Schicht, Person oder Bedarfsregel verweist auf einen unbekannten Bereich |
-| `import.unknownPerson` | `kind`, `personId`, `date`, `month` | Einschränkung, Historie, Abwesenheit, Wunsch, fixer Dienst oder Vormonatsdienst verweist auf eine unbekannte Person |
-| `import.unknownShift` | `kind`, `personId`, `shiftId`, `date` | Einschränkung, Wunsch, fixer Dienst oder Vormonatsdienst verweist auf eine unbekannte Schicht |
+| `import.unknownPerson` | `kind`, `personId`, `date`, `month` | Einschränkung, Historie, Abwesenheit, Wunsch, Vorgabe oder Vormonatsdienst verweist auf eine unbekannte Person |
+| `import.unknownShift` | `kind`, `personId`, `shiftId`, `date` | Einschränkung, Wunsch, Vorgabe oder Vormonatsdienst verweist auf eine unbekannte Schicht |
 | `import.unknownAbsenceType` | `personId`, `typeCode`, `date` | unbekannte Abwesenheitsart |
 | `import.badMonth` | `personId`, `month` | Monat eines Historieneintrags ist nicht `YYYY-MM` |
 | `import.badHistorySource` | `personId`, `month` | `source` eines Historieneintrags ist weder `import` noch `plan` |
@@ -244,11 +273,11 @@ der Monat des Eintrags.
 | `import.badShiftMix` | `personId` | gewohnte Verteilung ungültig: Anteil außerhalb von 0 bis 1, Summe ungleich 1 oder Bereich, der nicht zur Person gehört |
 | `import.badDemandDay` | `areaId`, `index`, `day` | unbekannter Tagestyp im Bedarf (erlaubt `MON`..`SUN`, `HOL`) |
 | `import.badDemand` | `areaId`, `index` | Bedarfsregel ohne `days` und ohne `date`, `min` kleiner als 0 oder `max` kleiner als `min` |
-| `import.badWeekday` | `kind`, `personId`, `weekday` | Wochentag einer Einschränkung nicht in 0..7 oder eines Familienwunsches nicht in 1..7 |
+| `import.badWeekday` | `kind`, `personId`, `weekday` | Wochentag einer Einschränkung nicht in 0..7 oder einer Familienregel nicht in 1..7 |
 | `import.restrictionTarget` | `personId` | Einschränkung hat nicht genau eines von `shiftId` und `category` |
 | `import.badValidity` | `personId` | `validTo` einer Einschränkung liegt vor `validFrom` |
 | `import.wishWithoutShift` | `personId`, `date` | Wunsch `SHIFT` oder `NOT_SHIFT` ohne `shiftId` |
-| `import.dateOutsideMonth` | `kind`, `personId`, `date`, `month` | Abwesenheit, Wunsch oder fixer Dienst außerhalb des Planungsmonats, Vormonatsdienst nicht vor dessen Beginn |
+| `import.dateOutsideMonth` | `kind`, `personId`, `date`, `month` | Abwesenheit, Wunsch oder Vorgabe außerhalb des Planungsmonats, Vormonatsdienst nicht vor dessen Beginn |
 | `import.missingTime` | `shiftId` | Beginn oder Ende einer Schicht fehlt |
 | `import.shiftTooLong` | `shiftId`, `minutes`, `maxMinutes` | Schicht ist länger als die Höchstdauer eines Dienstes (`maxDutyHours`) |
 | `import.shiftIdReserved` | `shiftId` | Schicht-Id `ER` ist für Ersatzruhe reserviert |

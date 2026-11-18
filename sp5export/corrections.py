@@ -9,6 +9,9 @@ rules of an area replaced); a version 1 file is read as before.
 A field that is present replaces the exported value completely, an absent field leaves it alone. Problems with
 single entries never stop the export: the field (or the person) is skipped and reported. Reports and warnings
 name person ids, field names and reasons only, never free text from the file.
+
+The dataset lists the entries that were applied in its section `appliedCorrections` (see `section`), so that
+Dispofold can export a corrections file with every correction still in effect.
 """
 
 import json
@@ -93,6 +96,19 @@ def _mix_text(mix) -> str:
         return "kein Mix"
     return " | ".join(f"{part} " + ", ".join(f"{k} {v:.3f}" for k, v in mix[part].items())
                      for part in ("categories", "areas") if mix.get(part))
+
+
+def _norm(value):
+    """A value as compared with the exported one: absent keys and null alike, numbers as floats, lists of rules or
+    restrictions in any order."""
+    if isinstance(value, dict):
+        return tuple(sorted((k, _norm(v)) for k, v in value.items() if v is not None))
+    if isinstance(value, list):
+        items = [_norm(v) for v in value]
+        return tuple(sorted(items, key=repr) if all(isinstance(v, dict) for v in value) else items)
+    if _number(value):
+        return float(value)
+    return value
 
 
 def _text(field: str, value) -> str:
@@ -298,7 +314,10 @@ def apply(dataset: dict, corrections: dict) -> tuple[list[tuple], list[str], tup
             elif (why := getattr(check, field)(value, person, entry)) is not None:
                 rows.append((pid, field, "ungueltig", why, _text(field, old), ""))
             else:
-                rows.append((pid, field, "angewendet", "", _text(field, old), _text(field, value)))
+                was = [{k: v for k, v in r.items() if k != "personId"} for r in old] if field == "restrictions" \
+                    else old
+                status = "gleich_quelle" if _norm(was) == _norm(value) else "angewendet"
+                rows.append((pid, field, status, "", _text(field, old), _text(field, value)))
                 if field == "restrictions":
                     rest = [r for r in dataset["restrictions"] if r["personId"] != pid]
                     at = next((i for i, r in enumerate(rest) if r["personId"] > pid), len(rest))
@@ -328,7 +347,9 @@ def apply(dataset: dict, corrections: dict) -> tuple[list[tuple], list[str], tup
             wrong += 1
             warnings.append(f"Korrektur {field} übersprungen: {why}")
             continue
-        rows.append(("", field, "angewendet", "", f"{len(own)} Regeln", f"{len(rules)} Regeln"))
+        was = [{k: v for k, v in r.items() if k != "areaId"} for r in own]
+        status = "gleich_quelle" if _norm(was) == _norm(rules) else "angewendet"
+        rows.append(("", field, status, "", f"{len(own)} Regeln", f"{len(rules)} Regeln"))
         before = next((i for i, r in enumerate(dataset["demand"]) if r["areaId"] == area), len(dataset["demand"]))
         at = sum(1 for r in dataset["demand"][:before] if r["areaId"] != area)
         rest = [r for r in dataset["demand"] if r["areaId"] != area]
@@ -337,3 +358,19 @@ def apply(dataset: dict, corrections: dict) -> tuple[list[tuple], list[str], tup
     summary = (f"Korrekturen Version 2: {excluded} Mitarbeiter ausgeschlossen, Bedarf in {replaced} Bereichen "
                f"ersetzt, {wrong} Bereiche übersprungen")
     return rows, warnings, (corrected, applied, skipped), summary
+
+
+def section(corrections: dict | None, rows: list[tuple]) -> dict:
+    """The dataset section `appliedCorrections`: the entries of the corrections file that were applied (status
+    angewendet, gleich_quelle or ausgeschlossen, as `apply` reports them), in the format of the file, version 2.
+    Without a file it is empty, which tells Dispofold that no correction was applied. `note` is never taken."""
+    people, demand = {}, {}
+    for pid, field, status, *_ in rows:
+        if status not in ("angewendet", "gleich_quelle", "ausgeschlossen"):
+            continue
+        if field.startswith("demand:"):
+            demand[field[len("demand:"):]] = corrections["demand"][field[len("demand:"):]]
+        else:
+            value = corrections["people"][pid][field]
+            people.setdefault(pid, {})[field] = float(value) if field in ("weeklyHours", "hoursAccount") else value
+    return {"format": FORMAT, "version": VERSION, "people": people, "demand": demand}

@@ -1450,9 +1450,15 @@ def test_corrections_replace_present_fields_and_leave_absent_ones(folder, tmp_pa
     assert not [r for r in result["restrictions"] if r["personId"] == "E9203"]
     assert [r for r in result["restrictions"] if r["personId"] not in ("E9201", "E9203")] == \
         [r for r in plain["restrictions"] if r["personId"] not in ("E9201", "E9203")]
-    assert {k: v for k, v in result.items() if k not in ("people", "restrictions")} == \
-        {k: v for k, v in plain.items() if k not in ("people", "restrictions")}
+    assert {k: v for k, v in result.items() if k not in ("people", "restrictions", "appliedCorrections")} == \
+        {k: v for k, v in plain.items() if k not in ("people", "restrictions", "appliedCorrections")}
     assert "Korrekturen: 3 Mitarbeiter korrigiert, 11 Felder angewendet, 0 Felder übersprungen" in warnings
+    # every applied field in the dataset's list, as in the file without the note; none without a file
+    applied = json.loads(path.read_text(encoding="utf-8"))
+    del applied["people"]["E9201"]["note"]
+    applied["people"]["E9201"]["weeklyHours"] = 30.0
+    assert result["appliedCorrections"] == {**applied, "version": 2, "demand": {}}
+    assert plain["appliedCorrections"] == {"format": "dispofold/corrections", "version": 2, "people": {}, "demand": {}}
 
     rows = _korrektur_rows(report)
     assert all(len(r) == 29 and r[2:18] == [""] * 16 and r[18] == "" and r[19:23] == [""] * 4 for r in rows)
@@ -1468,7 +1474,7 @@ def test_corrections_replace_present_fields_and_leave_absent_ones(folder, tmp_pa
         ("E9202", "areaIds", "angewendet", "HX", "HX HY"),
         ("E9202", "shiftMix", "angewendet", "categories EARLY 0.300, DAY 0.700 | areas HX 1.000",
          "categories DAY 0.500, LATE 0.500 | areas HX 0.750, HY 0.250"),
-        ("E9203", "restrictions", "angewendet", "0 Einschränkungen", "0 Einschränkungen")]
+        ("E9203", "restrictions", "gleich_quelle", "0 Einschränkungen", "0 Einschränkungen")]
     assert "Kind" not in report.read_text(encoding="utf-8") and "frei" not in report.read_text(encoding="utf-8")
 
 
@@ -1627,6 +1633,8 @@ def test_exclude_drops_the_person_and_everything_that_refers_to_them(folder, exp
     report = tmp_path / "bericht.csv"
     result, warnings, _ = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
                                  "--corrections", str(path), "--report", str(report))  # passes the contract
+    applied = result.pop("appliedCorrections")
+    assert applied["people"] == {pid: {"exclude": True}, other: {"weeklyHours": 12.5}}
     assert f'"{pid}"' not in json.dumps(result)
 
     def without(d):
@@ -1634,6 +1642,7 @@ def test_exclude_drops_the_person_and_everything_that_refers_to_them(folder, exp
         corr._drop(d, pid)
         return d
     expected = without(plain)
+    del expected["appliedCorrections"]
     next(p for p in expected["people"] if p["id"] == other)["weeklyHours"] = 12.5
     assert result == expected
     assert len(result["people"]) == len(plain["people"]) - 1
@@ -1692,8 +1701,52 @@ def test_demand_corrections_replace_the_rules_of_an_area(folder, exported, tmp_p
         ("", "demand", "ungueltig", "", "", "unbekannte Bereichs-Id")]
     assert "Korrekturen Version 2: 0 Mitarbeiter ausgeschlossen, Bedarf in 2 Bereichen ersetzt, 4 Bereiche " \
         "übersprungen" in warnings
+    assert result["appliedCorrections"]["demand"] == {"DR": [rule, dated], "TV": []}
     assert "Korrektur demand übersprungen: unbekannte Bereichs-Id" in warnings
     assert not any("QQ" in w for w in warnings)
+
+
+def test_corrections_equal_to_the_export_are_marked_and_still_listed(folder, exported, tmp_path):
+    plain = exported[0]
+    person = next(p for p in plain["people"] if any(r["personId"] == p["id"] for r in plain["restrictions"]))
+    pid, hours = person["id"], person["weeklyHours"]
+    own = [{k: v for k, v in r.items() if k != "personId"} for r in plain["restrictions"] if r["personId"] == pid]
+    area = next(a for a, n in Counter(r["areaId"] for r in plain["demand"]).items() if n > 1)
+    rules = [{k: v for k, v in r.items() if k != "areaId"} for r in plain["demand"] if r["areaId"] == area]
+    # the same values in another form: an integer, another order, null written out
+    path = _corrections(tmp_path, {pid: {"weeklyHours": int(hours) if hours == int(hours) else hours,
+                                         "compRestBalance": person["compRestBalance"] + 1,
+                                         "restrictions": [{**r, "validTo": r.get("validTo")} for r in own[::-1]]}},
+                        {"version": 2, "demand": {area: rules[::-1]}})
+    report = tmp_path / "bericht.csv"
+    result, warnings, _ = export(folder, MONTH, MAPPING, tmp_path / "dataset.json", "--demand", "sp5",
+                                 "--corrections", str(path), "--report", str(report))
+    assert [(r[1], *r[23:25]) for r in _korrektur_rows(report)] == [
+        ("", f"demand:{area}", "gleich_quelle"), (pid, "weeklyHours", "gleich_quelle"),
+        (pid, "compRestBalance", "angewendet"), (pid, "restrictions", "gleich_quelle")]
+    assert "Korrekturen: 1 Mitarbeiter korrigiert, 3 Felder angewendet, 0 Felder übersprungen" in warnings
+    # still applied and listed: the value stays when the source changes later
+    assert list(result["appliedCorrections"]["people"][pid]) == ["weeklyHours", "compRestBalance", "restrictions"]
+    assert list(result["appliedCorrections"]["demand"]) == [area]
+
+
+def test_the_listed_corrections_as_file_give_the_same_dataset(folder, exported, tmp_path):
+    plain = exported[0]
+    first, second, third = (p["id"] for p in plain["people"][:3])
+    path = _corrections(tmp_path, {first: {"exclude": True}, second: {"weeklyHours": 21, "note": "Notiz"},
+                                   third: {"hoursAccount": "viel"}, "E99999": {"weeklyHours": 10.0}},
+                        {"version": 2, "demand": {"DR": [{"days": ["MON"], "from": "08:00", "to": "12:00", "min": 1}],
+                                                  "QQ": []}})
+    once, _, _ = export(folder, MONTH, MAPPING, tmp_path / "once.json", "--demand", "sp5", "--corrections", str(path))
+    assert once["appliedCorrections"] == {
+        "format": "dispofold/corrections", "version": 2,
+        "people": {first: {"exclude": True}, second: {"weeklyHours": 21.0}},
+        "demand": {"DR": [{"days": ["MON"], "from": "08:00", "to": "12:00", "min": 1}]}}
+    listed = tmp_path / "listed.json"
+    listed.write_text(json.dumps(once["appliedCorrections"]), encoding="utf-8")
+    again, _, _ = export(folder, MONTH, MAPPING, tmp_path / "again.json", "--demand", "sp5",
+                         "--corrections", str(listed))
+    assert again == once
 
 
 def test_version_1_files_know_neither_exclude_nor_demand(folder, exported, tmp_path):
