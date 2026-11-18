@@ -267,7 +267,8 @@ zurück. So bleibt es bei jedem neuen Export erhalten, ohne dass SP5 bereinigt w
    2): die, die dieser Export beim letzten Import schon angewendet hatte, und die seit dem Import geänderten
    Stammdaten, je Person und Feld mit dem neueren Wert. Die Meldung nennt, wie viele Einträge aus früheren
    Korrekturen stammen und wie viele seit dem Import geändert wurden. Gibt es keine Korrektur, meldet Dispofold
-   das und speichert keine Datei. Was die Datei nicht ausdrücken kann, steht darunter unter "Nicht in der
+   das und speichert keine Datei; ab Dispofold 0.16.0 speichert es eine Datei ohne Einträge, wenn seit dem Import
+   etwas geändert und wieder zurückgenommen wurde (etwa ein Ausschluss), damit sie die bisherige ersetzt. Was die Datei nicht ausdrücken kann, steht darunter unter "Nicht in der
    Korrekturdatei, bitte im Quellsystem nachtragen:".
 4. Die bisherige `korrekturen.json` im Arbeitsordner durch die neue Datei ersetzen und beim nächsten Export
    `--corrections korrekturen.json` angeben (der Befehl aus [2. Exportieren](#2-exportieren)). Im Protokoll und in
