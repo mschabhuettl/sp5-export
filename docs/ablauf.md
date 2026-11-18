@@ -89,8 +89,8 @@ python3 ../sp5-export/sp5_export.py --data <SP5-Ordner> --month 2027-01 \
 ```
 
 Unter Windows dasselbe in einer Zeile mit `py -3 ..\sp5-export\sp5_export.py` und dem SP5-Ordner als
-Laufwerksbuchstabe oder UNC-Pfad in Anführungszeichen; `2> export-2027-01.log` funktioniert in der
-Eingabeaufforderung und in PowerShell gleich.
+Laufwerksbuchstabe oder UNC-Pfad in Anführungszeichen; `2> export-2027-01.log` leitet in der
+Eingabeaufforderung die Meldungen ebenso in die Protokolldatei um.
 
 - `--data`: der SP5-Datenordner (der Ordner mit `5EMPL.DBF`, `5SHIFT.DBF` usw.). Er wird nur gelesen. Datensatz und
   Bericht dürfen nicht darin liegen.
@@ -131,8 +131,8 @@ tail -n 1 export-2027-01.log
 grep -c '^Warnung:' export-2027-01.log
 ```
 
-Davor steht je Warnung eine Zeile `Warnung: ...`. Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen;
-das Protokoll darf deshalb zur Fehlersuche weitergegeben werden. Viele Zeilen kommen bei jedem Lauf und sind
+Davor steht je Warnung eine Zeile `Warnung: ...`. Warnungen nennen nur SP5-Ids, Kürzel und Anzahlen, nie Namen
+(zum Weitergeben siehe [6.](#6-daten-für-eine-fehlersuche-weitergeben)). Viele Zeilen kommen bei jedem Lauf und sind
 Zählerstände, keine Fehler (die Tabelle Warnungen im README sagt zu jeder, was sie bedeutet). Zuerst ansehen:
 
 - `... Mitarbeiter nicht übernommen (Grund)`: mit dem erwarteten Personalstand vergleichen.
@@ -348,12 +348,16 @@ den Folgemonat die Korrekturen schon mitbringt.
 Datensatz (`dataset-*.json`) und Exporte aus Dispofold enthalten Namen und personenbezogene Daten (Wochenstunden,
 Stundenkonten, Einschränkungen, Familienregeln) und gehören nicht in E-Mails, Tickets oder Repositories.
 
-**Ohne Weiteres weitergeben** lassen sich:
+**Ohne Namen, aber nicht anonym** sind:
 
-- das Protokoll des Exports (`export-*.log`): nur SP5-Ids, Kürzel und Zahlen;
-- der Bericht (`bericht-*.csv`): nur SP5-Ids, Personen-Ids, Kürzel und Zahlen;
-- die Zuordnung nur, wenn die Gruppennamen und Kürzel des Betriebs weitergegeben werden dürfen; sie enthält keine
-  Personen.
+- das Protokoll des Exports (`export-*.log`): SP5-Ids, Kürzel und Zahlen, dazu in der letzten Zeile und in
+  Fehlermeldungen die Dateipfade so, wie sie beim Aufruf angegeben wurden;
+- der Bericht (`bericht-*.csv`): Personen-Ids aus SP5 mit Wochenstunden, Bereichen und Diensten je Person, dazu
+  die Kürzel des Betriebs;
+- die Zuordnung: Gruppennamen und Kürzel des Betriebs, keine Personen.
+
+Diese Dateien nur an jemanden geben, der die Ids und Kürzel des Betriebs sehen darf. Für alle anderen sind die
+pseudonymisierten Dateien aus Dispofold der Weg.
 
 Die Korrekturdatei enthält keine Namen, aber Freitext in `note` und in den Notizen der Familienregeln
 (`familyRules`); vor dem Weitergeben die Notizen durchsehen.
