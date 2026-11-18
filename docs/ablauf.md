@@ -285,7 +285,9 @@ Voraussetzung ist Dispofold ab Version 0.15.0. Ältere Versionen importieren den
 Abschnitt aber und exportieren nur die Änderungen seit dem Import, ohne Hinweis; dann Dispofold aktualisieren.
 Meldet Dispofold beim Export der Korrekturdatei, dass der letzte Import die schon angewendeten Korrekturen nicht
 nennt (ein Datensatz aus einer älteren Version dieses Exports), die bisherige `korrekturen.json` nicht ersetzen,
-sondern erst mit ihr neu exportieren und importieren und dann die Korrekturdatei speichern.
+sondern erst mit ihr neu exportieren, mit **Änderungen aus Dispofold behalten** importieren (sonst gehen die
+Änderungen seit dem letzten Import verloren) und dann die Korrekturdatei speichern. Das ist einmal nötig, nach
+dem Wechsel auf diese Version des Exports und Dispofold 0.15.0.
 
 Was beim Ersetzen nicht in die neue Datei kommt:
 
