@@ -193,11 +193,16 @@ jeweiligen Option. Drei Prüfungen braucht man beim Bereinigen am häufigsten:
 Einschränkungen als Anzahl.
 
 - `status` `angewendet`: Die Korrektur steht im Datensatz.
+- `status` `gleich_quelle`: Die Korrektur steht im Datensatz, ihr Wert ist aber derselbe wie der aus SP5 und der
+  Historie (Listen in beliebiger Reihenfolge). Sie schadet nicht und bleibt in jeder Korrekturdatei aus Dispofold;
+  sie wirkt also weiter, auch wenn sich der Wert in SP5 später ändert. Wer den Wert wieder SP5 überlassen will,
+  löscht das Feld in `korrekturen.json` von Hand.
 - `status` `ausgeschlossen` (Feld `exclude`): Die Person fehlt im Datensatz, mit allem, was sich auf sie bezieht.
-- `status` `person_fehlt`: Die Person wird gar nicht exportiert (etwa schon in SP5 ausgetreten). Die Korrektur kann
-  aus der Datei entfernt werden.
-- `status` `ungueltig`, Grund in `grund`: Das Feld wurde übersprungen, der Datensatz hat den Wert aus SP5. In der
-  Datei berichtigen.
+- `status` `person_fehlt`: Die Person wird gar nicht exportiert (etwa schon in SP5 ausgetreten). Die Korrektur
+  fehlt in der nächsten Korrekturdatei aus Dispofold von selbst.
+- `status` `ungueltig`, Grund in `grund`: Das Feld wurde übersprungen, der Datensatz hat den Wert aus SP5. In
+  Dispofold neu korrigieren oder in der Datei berichtigen: Die nächste Korrekturdatei aus Dispofold enthält nur,
+  was angewendet wurde.
 - Bedarf: je Bereich eine Zeile ohne Person mit `feld` `demand:<Bereich>`; `wert_export` und `wert_korrektur` sind
   die Zahl der Bedarfsregeln vorher und nachher.
 
@@ -253,13 +258,15 @@ zurück. So bleibt es bei jedem neuen Export erhalten, ohne dass SP5 bereinigt w
    - **Einstellungen**, **Stammdaten**, **Bedarf**: Bedarf eines Bereichs anlegen oder ändern. In der Datei ersetzt
      das alle Bedarfsregeln des Bereichs.
 3. **Einstellungen**, **Daten**, Abschnitt **Korrekturdatei**: **Änderungen als Korrekturdatei exportieren**.
-   Dispofold speichert die seit dem letzten Import geänderten Stammdaten als `korrekturen.json` (Format
-   `dispofold/corrections`, Version 2). Gibt es keine Änderung, meldet Dispofold das und speichert keine Datei. Was
-   die Datei nicht ausdrücken kann, steht darunter unter "Nicht in der Korrekturdatei, bitte im Quellsystem
-   nachtragen:".
-4. Die Datei in den Arbeitsordner legen und beim nächsten Export `--corrections korrekturen.json` angeben (der
-   Befehl aus [2. Exportieren](#2-exportieren)). Im Protokoll und in den Zeilen `korrektur` des Berichts prüfen,
-   dass alles `angewendet` oder `ausgeschlossen` ist.
+   Dispofold speichert alle geltenden Korrekturen als `korrekturen.json` (Format `dispofold/corrections`, Version
+   2): die, die dieser Export beim letzten Import schon angewendet hatte, und die seit dem Import geänderten
+   Stammdaten, je Person und Feld mit dem neueren Wert. Die Meldung nennt, wie viele Einträge aus früheren
+   Korrekturen stammen und wie viele seit dem Import geändert wurden. Gibt es keine Korrektur, meldet Dispofold
+   das und speichert keine Datei. Was die Datei nicht ausdrücken kann, steht darunter unter "Nicht in der
+   Korrekturdatei, bitte im Quellsystem nachtragen:".
+4. Die bisherige `korrekturen.json` im Arbeitsordner durch die neue Datei ersetzen und beim nächsten Export
+   `--corrections korrekturen.json` angeben (der Befehl aus [2. Exportieren](#2-exportieren)). Im Protokoll und in
+   den Zeilen `korrektur` des Berichts prüfen, dass alles `angewendet`, `gleich_quelle` oder `ausgeschlossen` ist.
 
 In Dispofold angelegte Personen und geänderte Namen (Vorname, Nachname, Kürzel, auch die externe Id) kann die
 Korrekturdatei nicht ausdrücken; die Vorschau beim Import listet sie weiter unter "Nicht übernommen:". Solche
@@ -267,19 +274,27 @@ Personen in SP5 eintragen oder nach dem Import in Dispofold neu anlegen, Namen i
 in Dispofold nachtragen. Ebenso nicht in der Datei: Änderungen an Bereichen, Schichten, Abwesenheitsarten und
 Feiertagen (dafür die Zuordnung oder SP5 ändern).
 
-**Wichtig ab der zweiten Runde.** Die Korrekturdatei aus Dispofold enthält nur die Änderungen **seit dem letzten
-Import**. Wurde der Datensatz schon mit `--corrections` exportiert und importiert, stecken die früheren Korrekturen
-im importierten Stand und fehlen in einer neuen Korrekturdatei. Deshalb die neue Datei nicht über
-`korrekturen.json` speichern, sondern zum Beispiel als `korrekturen-neu.json`, und ihren Inhalt in `korrekturen.json`
-übernehmen:
+**Jede weitere Runde** geht genauso: in Dispofold korrigieren, als Korrekturdatei exportieren, `korrekturen.json`
+durch die neue Datei ersetzen, mit `--corrections korrekturen.json` exportieren, importieren. Von Hand
+zusammenführen muss man nichts. Das geht, weil der Datensatz im Abschnitt `appliedCorrections` festhält, welche
+Korrekturen der Export angewendet hat (ohne `--corrections` leer), und Dispofold diese mit den Änderungen seit dem
+Import zusammen exportiert. Ein Feld, das in Dispofold auf den Wert aus SP5 zurückgeändert wird, bleibt mit
+diesem Wert in der Datei (im Bericht dann `gleich_quelle`).
 
-- je Person unter `people`: die Felder aus der neuen Datei ersetzen dieselben Felder der alten; neue Personen und
-  `"exclude": true` kommen dazu, alles andere der alten Datei bleibt;
-- je Bereich unter `demand`: der Eintrag aus der neuen Datei ersetzt den alten;
-- `format` und `version` bleiben (`"dispofold/corrections"`, `2`).
+Voraussetzung ist Dispofold ab Version 0.15.0. Ältere Versionen importieren den Datensatz zwar, übergehen den
+Abschnitt aber und exportieren nur die Änderungen seit dem Import, ohne Hinweis; dann Dispofold aktualisieren.
+Meldet Dispofold beim Export der Korrekturdatei, dass der letzte Import die schon angewendeten Korrekturen nicht
+nennt (ein Datensatz aus einer älteren Version dieses Exports), die bisherige `korrekturen.json` nicht ersetzen,
+sondern erst mit ihr neu exportieren und importieren und dann die Korrekturdatei speichern.
 
-Danach wie in Schritt 4 exportieren und die Zeilen `korrektur` prüfen. Wer die alte Datei einfach überschreibt,
-verliert beim nächsten Export die früheren Korrekturen.
+Was beim Ersetzen nicht in die neue Datei kommt:
+
+- `note`: Notizen kommen nie in den Datensatz und deshalb auch nicht in die Datei aus Dispofold. Wer sie braucht,
+  hält sie getrennt fest.
+- Felder mit `status` `ungueltig` oder `person_fehlt`: Sie wurden nicht angewendet (siehe
+  [Den Bericht lesen](#den-bericht-lesen)).
+- Eine Person mit `"exclude": true` bleibt in jeder neuen Datei ausgeschlossen. Wer sie wieder planen will, löscht
+  ihren Eintrag in `korrekturen.json` von Hand und exportiert neu.
 
 Eine Korrekturdatei lässt sich auch von Hand schreiben; ihr Format und alle Prüfungen stehen im README unter
 Korrekturdatei. Ein erfundenes Beispiel der Version 2:
@@ -313,8 +328,8 @@ Die **Vorschau** ("Vorschau des Imports mit den Änderungen aus Dispofold") zeig
 - "Übernommen aus Dispofold: ..." mit der Zahl der Änderungen, die auf den neuen Datensatz angewendet werden (oder
   "Seit dem letzten Import wurde in Dispofold nichts geändert.");
 - "Auch im neuen Import geändert, es gilt der Wert aus Dispofold:" mit Person und Feld oder "Bedarf im Bereich
-  ..."; das sind Felder, die auch der neue Datensatz gegenüber dem letzten Import geändert hat. Steckt eine
-  Änderung schon über `--corrections` im neuen Datensatz, steht sie ebenfalls hier, mit demselben Wert;
+  ..."; das sind Felder, die auch der neue Datensatz gegenüber dem letzten Import geändert hat. Eine Änderung,
+  die schon mit demselben Wert über `--corrections` im neuen Datensatz steckt, steht nicht hier;
 - "Nicht übernommen:" mit allem, was sich nicht übertragen lässt, etwa in Dispofold angelegte Personen, geänderte
   Namen oder Änderungen für Personen, die im neuen Datensatz fehlen.
 
@@ -411,4 +426,4 @@ Korrekturdatei `exclude`) und als Korrekturdatei exportieren. Kommt die Person i
 lässt sie sich nicht entfernen; dann in Dispofold den **Austritt** eintragen (`exitDate`). Ihre Dienste zählen
 weiter für den Bedarf aus der Historie: Die Arbeit, die sie gemacht hat, müssen andere übernehmen. Eine Korrektur
 für jemanden, den SP5 inzwischen selbst nicht mehr exportiert, steht im Bericht mit `status` `person_fehlt` und
-kann aus der Korrekturdatei entfernt werden.
+fehlt in der nächsten Korrekturdatei aus Dispofold von selbst.

@@ -264,9 +264,13 @@ Probleme halten den Export nicht an. Ein Feld mit ungültigem Wert oder unbekann
 (`restrictions` als Ganzes), ebenso alle Felder einer Person, die nicht exportiert wird; dazu je eine Warnung.
 Eine Zeile `Korrekturen: 3 Mitarbeiter korrigiert, 7 Felder angewendet, 1 Felder übersprungen` fasst zusammen.
 Mit `--report` steht je Feld eine Zeile `korrektur` mit `person`, `feld`, `status` (`angewendet`,
-`person_fehlt` oder `ungueltig`, dann mit dem Grund in `grund`), dem exportierten Wert (`wert_export`) und dem
-korrigierten (`wert_korrektur`) als kurzer Text; Regeln und Einschränkungen als Anzahl. Werte aus der Datei, die
-nicht gültig sind, und `note` stehen nie im Bericht oder in den Warnungen.
+`gleich_quelle`, `person_fehlt` oder `ungueltig`, dann mit dem Grund in `grund`), dem exportierten Wert
+(`wert_export`) und dem korrigierten (`wert_korrektur`) als kurzer Text; Regeln und Einschränkungen als Anzahl.
+`gleich_quelle` heißt: angewendet, aber der Wert ist derselbe wie der exportierte (Zahlen als Zahl, fehlende
+Schlüssel wie `null`, Listen von Regeln und Einschränkungen in beliebiger Reihenfolge). Die Korrektur ändert dann
+nichts und kann aus der Datei entfernt werden, wenn der Wert wieder aus SP5 kommen soll; bleibt sie, wirkt sie
+weiter, auch wenn sich der Wert in SP5 später ändert. In der Zusammenfassung zählt sie als angewendet. Werte aus
+der Datei, die nicht gültig sind, und `note` stehen nie im Bericht oder in den Warnungen.
 
 #### Version 2: Personen ausschließen, Bedarf setzen
 
@@ -299,6 +303,18 @@ unbekanntes Feld und `demand` wird nicht gelesen.
 
 Ein anderes `format`, eine `version` über 2 oder eine nicht lesbare Datei beenden den Export mit einem Fehler,
 ebenso `demand`, das kein Objekt ist. Ohne `--corrections` ist der Datensatz derselbe wie ohne diese Option.
+
+#### Angewendete Korrekturen im Datensatz
+
+Der Datensatz hält im Abschnitt `appliedCorrections` fest, welche Korrekturen angewendet wurden: die Einträge der
+Korrekturdatei mit `status` `angewendet`, `gleich_quelle` oder `ausgeschlossen`, im Format der Korrekturdatei
+(Version 2, ohne `note`). Ohne `--corrections` ist der Abschnitt leer
+(`{"format": "dispofold/corrections", "version": 2, "people": {}, "demand": {}}`). Dispofold (ab 0.15.0)
+speichert ihn beim Import und exportiert damit eine vollständige Korrekturdatei: diese Korrekturen und die
+Änderungen seit dem Import, je Person und Feld mit dem neueren Wert. Die Datei aus Dispofold ersetzt deshalb
+`korrekturen.json` einfach, ohne Zusammenführen von Hand (Ablauf in [docs/ablauf.md](docs/ablauf.md)). Ältere
+Versionen von Dispofold ignorieren den Abschnitt; ihre Korrekturdatei enthält nur die Änderungen seit dem Import.
+Nicht in der neuen Datei stehen `note` sowie Felder mit `status` `ungueltig` oder `person_fehlt`.
 
 ### Dienste auf ignorierten Schichten in den Planungsmonaten
 
