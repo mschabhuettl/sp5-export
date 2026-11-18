@@ -156,7 +156,7 @@ Korrekturdatei (`dispofold/corrections`, Version 2), nur die tatsächlich angewe
 stehen also schon in den Personen und im Bedarf; der Import wendet den Abschnitt nicht noch einmal an und
 prüft seine Einträge nicht.
 
-```json
+```
 "appliedCorrections": {
   "format": "dispofold/corrections", "version": 2,
   "people": { "P0001": { "weeklyHours": 30.0 }, "P0003": { "exclude": true } },
