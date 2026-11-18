@@ -9,6 +9,9 @@ Dispofold ist ein Dienstplanungswerkzeug für Leitstellen. Die echte Zuordnungsd
 Kürzeln und Gruppennamen des jeweiligen Betriebs ist eine lokale Datei des Eigentümers und gehört nie in
 ein Repository; im Repository liegt nur das neutrale Beispiel `mapping.example.json`.
 
+Den ganzen Ablauf vom Export über Korrekturen und Import bis zum abgeschlossenen Monat in Dispofold beschreibt
+[Vom SP5-Export zum fertigen Plan](docs/ablauf.md).
+
 ## Voraussetzungen
 
 - Python 3.10 oder neuer. Weitere Pakete braucht der Export nicht; die SP5-Lesefunktionen liegen in
